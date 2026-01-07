@@ -303,6 +303,8 @@ Enums: Role (OWNER, ADMIN, MANAGER, SALES), JobStatus, InviteStatus
 | يناير 2026 | Sprint 1 | POST_DEPLOY_SMOKETEST.md created + Final deploy prep | - |
 | يناير 2026 | Sprint 1 | **Render API DEPLOYED** - https://leedz-api.onrender.com | - |
 | يناير 2026 | Sprint 1 | **Local Dev Environment WORKING** - API:3001 + Web:3000 | - |
+| يناير 2026 | Sprint 1 | **Vercel Frontend DEPLOYED** - https://leedz.vercel.app | - |
+| يناير 2026 | Sprint 1 | Tailwind CDN → PostCSS + favicon.svg added | - |
 
 ---
 
@@ -315,13 +317,17 @@ Enums: Role (OWNER, ADMIN, MANAGER, SALES), JobStatus, InviteStatus
 - **Swagger Docs:** `/api/docs` (Basic Auth protected)
 
 ### Frontend (Vercel)
-- **Status:** ⏳ PENDING - Manual deploy required (BLOCKER: no VERCEL_TOKEN)
-- **Target URL:** https://leedz-web.vercel.app (or auto-generated)
+- **URL:** https://leedz.vercel.app
+- **Status:** ✅ DEPLOYED
+- **Alt URLs:** 
+  - https://leedz-git-main-opthupsa-5935s-projects.vercel.app
+  - https://leedz-iyyr0zt8p-opthupsa-5935s-projects.vercel.app
 
-### BLOCKERS
-| Blocker | Impact | Workaround |
-|---------|--------|------------|
-| `VERCEL_TOKEN` missing | Cannot auto-deploy frontend | Manual Vercel Dashboard deploy |
+### ⚠️ Post-Deploy Actions Required
+| Action | Status | Details |
+|--------|--------|---------|
+| Update `CORS_ORIGINS` on Render | ⏳ PENDING | Add Vercel URLs to allow API calls |
+| Verify `VITE_API_BASE_URL` on Vercel | ⏳ PENDING | Should be `https://leedz-api.onrender.com` |
 
 ---
 
@@ -351,17 +357,34 @@ Enums: Role (OWNER, ADMIN, MANAGER, SALES), JobStatus, InviteStatus
 
 ### Vercel Web Checklist
 
-1. [ ] Open https://vercel.com/new
-2. [ ] Import `opthupsa-alt/leedz`
-3. [ ] **Root Directory:** `web`
-4. [ ] **Framework:** Vite
-5. [ ] **Build Command:** `npm ci && npm run build`
-6. [ ] **Output Directory:** `dist`
+1. [x] Open https://vercel.com/new
+2. [x] Import `opthupsa-alt/leedz`
+3. [x] **Root Directory:** `web`
+4. [x] **Framework:** Vite
+5. [x] **Build Command:** `npm ci && npm run build`
+6. [x] **Output Directory:** `dist`
 7. [ ] Add Environment Variable:
    - [ ] `VITE_API_BASE_URL` = `https://leedz-api.onrender.com`
-8. [ ] Deploy
+8. [x] Deploy - **DEPLOYED** (Jan 7, 2026)
 9. [ ] Verify: Open site, check Network tab for API calls
 10. [ ] **After deploy:** Update CORS_ORIGINS on Render with Vercel URL
+
+**Vercel URL:** https://leedz.vercel.app
+
+### 🔧 Final Configuration Steps
+
+#### Step 1: Update CORS on Render
+1. Go to https://dashboard.render.com → leedz-api → Environment
+2. Update `CORS_ORIGINS` to:
+   ```
+   https://leedz.vercel.app,https://leedz-git-main-opthupsa-5935s-projects.vercel.app,http://localhost:3000
+   ```
+3. Save → Manual Deploy
+
+#### Step 2: Verify Vercel Environment
+1. Go to https://vercel.com → leedz → Settings → Environment Variables
+2. Ensure `VITE_API_BASE_URL` = `https://leedz-api.onrender.com`
+3. If missing, add it and redeploy
 
 ---
 
