@@ -493,26 +493,34 @@ const corsOptions = {
 
 1. افتح [render.com/dashboard](https://render.com/dashboard)
 2. New → Web Service
-3. Connect your GitHub repo
+3. Connect GitHub repo: `opthupsa-alt/leedz`
 4. Configure:
    - **Name:** `leedz-api`
    - **Root Directory:** `api`
    - **Runtime:** Node
-   - **Build Command:** `npm ci && npx prisma generate && npm run build`
+   - **Build Command:** `npm ci && npx prisma generate && npx prisma migrate deploy && npm run build`
    - **Start Command:** `node dist/main.js`
    - **Plan:** Free
 
 #### 2. Environment Variables (على Render)
 
-أضف هذه المتغيرات (بدون القيم هنا - أضفها من Neon Dashboard):
+أضف هذه المتغيرات (القيم من `ops/local/.env.secrets.local`):
 
-| Variable | Description |
-|----------|-------------|
-| `NODE_ENV` | `production` |
-| `DATABASE_URL` | Neon Pooled connection string |
-| `DATABASE_URL_UNPOOLED` | Neon Direct connection string |
-| `JWT_SECRET` | Random 64+ character string |
-| `CORS_ORIGINS` | `https://your-vercel-app.vercel.app,http://localhost:5173` |
+| Variable | Description | Source |
+|----------|-------------|--------|
+| `NODE_ENV` | `production` | Static |
+| `DATABASE_URL` | Neon Pooled connection | Neon Dashboard |
+| `DATABASE_URL_UNPOOLED` | Neon Direct connection | Neon Dashboard |
+| `JWT_SECRET` | Random 64+ chars | Generate new |
+| `CORS_ORIGINS` | Vercel URL + localhost | See below |
+| `SWAGGER_ENABLED` | `1` | Static |
+| `SWAGGER_USER` | Admin username | Generate |
+| `SWAGGER_PASS` | Admin password | Generate |
+
+**CORS_ORIGINS format:**
+```
+https://leedz-web.vercel.app,http://localhost:5173
+```
 
 #### 3. Health Check
 
@@ -540,6 +548,55 @@ curl https://leedz-api.onrender.com/health
 **للتعامل مع Sleep:**
 - Extension يجب أن يتعامل مع reconnection
 - أول request بعد sleep سيكون بطيء
+
+---
+
+## 🌐 Vercel Deployment (Frontend Web)
+
+### خطوات النشر على Vercel
+
+#### 1. إنشاء Project
+
+1. افتح [vercel.com/new](https://vercel.com/new)
+2. Import Git Repository: `opthupsa-alt/leedz`
+3. Configure:
+   - **Root Directory:** `web`
+   - **Framework:** Vite
+   - **Build Command:** `npm ci && npm run build`
+   - **Output Directory:** `dist`
+
+#### 2. Environment Variables (على Vercel)
+
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `VITE_API_BASE_URL` | `https://leedz-api.onrender.com` | Render API URL |
+
+#### 3. بعد النشر
+
+```bash
+# افتح الموقع
+https://leedz-web.vercel.app
+
+# تأكد أن الـ API متصل
+# Network tab → requests should go to Render URL
+```
+
+---
+
+## 🔐 Environment Variables Matrix
+
+| Variable | Local | Render | Vercel | Description |
+|----------|-------|--------|--------|-------------|
+| `DATABASE_URL` | ✅ | ✅ | ❌ | Neon Pooled |
+| `DATABASE_URL_UNPOOLED` | ✅ | ✅ | ❌ | Neon Direct |
+| `JWT_SECRET` | ✅ | ✅ | ❌ | Auth signing |
+| `CORS_ORIGINS` | ✅ | ✅ | ❌ | Allowed origins |
+| `SWAGGER_ENABLED` | ✅ | ✅ | ❌ | Enable Swagger |
+| `SWAGGER_USER` | ✅ | ✅ | ❌ | Swagger auth |
+| `SWAGGER_PASS` | ✅ | ✅ | ❌ | Swagger auth |
+| `VITE_API_BASE_URL` | ✅ | ❌ | ✅ | API endpoint |
+
+**Legend:** ✅ = Required, ❌ = Not needed
 
 ---
 

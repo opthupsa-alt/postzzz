@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import * as basicAuth from 'express-basic-auth';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -36,8 +37,23 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Id'],
   });
 
-  // Swagger documentation (enabled unless SWAGGER_DISABLED=true)
-  if (process.env.SWAGGER_DISABLED !== 'true') {
+  // Swagger documentation (enabled if SWAGGER_ENABLED=1)
+  const swaggerEnabled = process.env.SWAGGER_ENABLED === '1';
+  const httpAdapter = app.getHttpAdapter();
+
+  if (swaggerEnabled) {
+    // Protect Swagger with Basic Auth in production
+    const swaggerUser = process.env.SWAGGER_USER || 'admin';
+    const swaggerPass = process.env.SWAGGER_PASS || 'changeme';
+
+    httpAdapter.use(
+      '/api/docs',
+      basicAuth({
+        challenge: true,
+        users: { [swaggerUser]: swaggerPass },
+      }),
+    );
+
     const config = new DocumentBuilder()
       .setTitle('Leedz API')
       .setDescription('Leedz SaaS Multi-tenant Backend API')
@@ -54,18 +70,22 @@ async function bootstrap() {
 
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/docs', app, document);
-  }
 
-  // Root endpoint - API info
-  const httpAdapter = app.getHttpAdapter();
-  httpAdapter.get('/', (req: any, res: any) => {
-    res.json({
-      name: 'Leedz API',
-      version: '1.0.0',
-      docs: '/api/docs',
-      health: '/health',
+    // Root redirects to docs when Swagger enabled
+    httpAdapter.get('/', (req: any, res: any) => {
+      res.redirect('/api/docs');
     });
-  });
+  } else {
+    // Root returns JSON info when Swagger disabled
+    httpAdapter.get('/', (req: any, res: any) => {
+      res.json({
+        name: 'Leedz API',
+        version: '1.0.0',
+        status: 'running',
+        health: '/health',
+      });
+    });
+  }
 
   // Bind to 0.0.0.0 for Render compatibility
   const port = process.env.PORT || 3001;

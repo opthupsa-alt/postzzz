@@ -224,30 +224,60 @@ Enums: Role (OWNER, ADMIN, MANAGER, SALES), JobStatus, InviteStatus
 
 **Full pipeline verified:** Job created → ACK → Progress → Evidence (with hash) → Done → Status COMPLETED
 
-### Render Deployment (Ready)
+### Render Deployment (Ready for Manual Deploy)
 
-**Status:** جاهز للنشر - يحتاج فقط إضافة Environment Variables على Render
+**Status:** Code ready - Manual dashboard deploy required (RENDER_API_KEY not available)
 
 **Configuration:**
 - **Service Name:** `leedz-api`
 - **Root Directory:** `api`
-- **Build Command:** `npm ci && npx prisma generate && npm run build`
+- **Build Command:** `npm ci && npx prisma generate && npx prisma migrate deploy && npm run build`
 - **Start Command:** `node dist/main.js`
 - **Health Check:** `/health`
 - **Plan:** Free
 
 **Environment Variables المطلوبة على Render:**
-- `NODE_ENV=production`
-- `DATABASE_URL` (من Neon)
-- `DATABASE_URL_UNPOOLED` (من Neon)
-- `JWT_SECRET` (64+ chars)
-- `CORS_ORIGINS` (Vercel URL + localhost)
+
+| Variable | Value |
+|----------|-------|
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | (من Neon - Pooled) |
+| `DATABASE_URL_UNPOOLED` | (من Neon - Direct) |
+| `JWT_SECRET` | (Generate 64+ chars) |
+| `CORS_ORIGINS` | `https://leedz-web.vercel.app,http://localhost:5173` |
+| `SWAGGER_ENABLED` | `1` |
+| `SWAGGER_USER` | (Generate) |
+| `SWAGGER_PASS` | (Generate) |
+
+### Vercel Deployment (Ready for Manual Deploy)
+
+**Status:** Code ready - Manual dashboard deploy required (VERCEL_TOKEN not available)
+
+**Configuration:**
+- **Root Directory:** `web`
+- **Framework:** Vite
+- **Build Command:** `npm ci && npm run build`
+- **Output Directory:** `dist`
+
+**Environment Variables المطلوبة على Vercel:**
+
+| Variable | Value |
+|----------|-------|
+| `VITE_API_BASE_URL` | `https://leedz-api.onrender.com` |
+
+### BLOCKERS
+
+| Blocker | Impact | Workaround |
+|---------|--------|------------|
+| `RENDER_API_KEY` missing | Cannot auto-deploy API | Manual Render Dashboard deploy |
+| `VERCEL_TOKEN` missing | Cannot auto-deploy Web | Manual Vercel Dashboard deploy |
 
 ### ما لم يتم (TBD for Sprint 2)
 
 | المهمة | السبب | متى |
 |--------|-------|-----|
-| Render Deploy | يحتاج إعداد Render account | Sprint 2 |
+| Execute Render Deploy | Manual action needed | Now |
+| Execute Vercel Deploy | Manual action needed | Now |
 | RLS policies | يحتاج PostgreSQL setup | Sprint 2 |
 | Email sending for invites | يحتاج email service | Sprint 2 |
 | Frontend-Backend integration | بعد Render URL | Sprint 2 |
@@ -269,6 +299,7 @@ Enums: Role (OWNER, ADMIN, MANAGER, SALES), JobStatus, InviteStatus
 | يناير 2026 | Sprint 0 Hardening | Secrets + Hosting + Constants + Sprint 1 Plan | - |
 | يناير 2026 | Sprint 1 | Backend Foundation (NestJS + Prisma + Auth + Jobs + Agent) | - |
 | يناير 2026 | Sprint 1 | Smoke Tests passed + Render config ready | - |
+| يناير 2026 | Sprint 1 | Swagger Basic Auth + Deploy configs finalized | - |
 
 ---
 
