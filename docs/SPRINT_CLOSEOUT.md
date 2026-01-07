@@ -301,6 +301,26 @@ Enums: Role (OWNER, ADMIN, MANAGER, SALES), JobStatus, InviteStatus
 | يناير 2026 | Sprint 1 | Smoke Tests passed + Render config ready | - |
 | يناير 2026 | Sprint 1 | Swagger Basic Auth + Deploy configs finalized | - |
 | يناير 2026 | Sprint 1 | POST_DEPLOY_SMOKETEST.md created + Final deploy prep | - |
+| يناير 2026 | Sprint 1 | **Render API DEPLOYED** - https://leedz-api.onrender.com | - |
+
+---
+
+## 🚀 Deployment Status (Jan 7, 2026)
+
+### Backend (Render)
+- **URL:** https://leedz-api.onrender.com
+- **Status:** ✅ DEPLOYED
+- **Health Check:** `/health`
+- **Swagger Docs:** `/api/docs` (Basic Auth protected)
+
+### Frontend (Vercel)
+- **Status:** ⏳ PENDING - Manual deploy required (BLOCKER: no VERCEL_TOKEN)
+- **Target URL:** https://leedz-web.vercel.app (or auto-generated)
+
+### BLOCKERS
+| Blocker | Impact | Workaround |
+|---------|--------|------------|
+| `VERCEL_TOKEN` missing | Cannot auto-deploy frontend | Manual Vercel Dashboard deploy |
 
 ---
 
@@ -308,23 +328,25 @@ Enums: Role (OWNER, ADMIN, MANAGER, SALES), JobStatus, InviteStatus
 
 ### Render API Checklist
 
-1. [ ] Open https://render.com/dashboard
-2. [ ] New → Web Service → Connect `opthupsa-alt/leedz`
-3. [ ] **Root Directory:** `api`
-4. [ ] **Build Command:** `npm ci && npx prisma generate && npx prisma migrate deploy && npm run build`
-5. [ ] **Start Command:** `node dist/main.js`
-6. [ ] **Health Check Path:** `/health`
-7. [ ] Add Environment Variables:
-   - [ ] `NODE_ENV` = `production`
-   - [ ] `DATABASE_URL` = *(from Neon - Pooled)*
-   - [ ] `DATABASE_URL_UNPOOLED` = *(from Neon - Direct)*
-   - [ ] `JWT_SECRET` = *(generate 64+ chars)*
-   - [ ] `CORS_ORIGINS` = `https://leedz-web.vercel.app,http://localhost:5173`
-   - [ ] `SWAGGER_ENABLED` = `1`
-   - [ ] `SWAGGER_USER` = *(generate)*
-   - [ ] `SWAGGER_PASS` = *(generate)*
-8. [ ] Deploy
-9. [ ] Verify: `curl https://<render-url>/health`
+1. [x] Open https://render.com/dashboard
+2. [x] New → Web Service → Connect `opthupsa-alt/leedz`
+3. [x] **Root Directory:** `api`
+4. [x] **Build Command:** `npm ci && npx prisma generate && npx prisma migrate deploy && npm run build`
+5. [x] **Start Command:** `node dist/main.js`
+6. [x] **Health Check Path:** `/health`
+7. [x] Add Environment Variables:
+   - [x] `NODE_ENV` = `production`
+   - [x] `DATABASE_URL` = *(from Neon - Pooled)*
+   - [x] `DATABASE_URL_UNPOOLED` = *(from Neon - Direct)*
+   - [x] `JWT_SECRET` = *(generate 64+ chars)*
+   - [x] `CORS_ORIGINS` = `https://leedz-web.vercel.app,http://localhost:5173`
+   - [x] `SWAGGER_ENABLED` = `1`
+   - [x] `SWAGGER_USER` = *(configured)*
+   - [x] `SWAGGER_PASS` = *(configured)*
+8. [x] Deploy - **DEPLOYED** (Jan 7, 2026)
+9. [ ] Verify: `curl https://leedz-api.onrender.com/health`
+
+**Render URL:** https://leedz-api.onrender.com
 
 ### Vercel Web Checklist
 
@@ -335,9 +357,10 @@ Enums: Role (OWNER, ADMIN, MANAGER, SALES), JobStatus, InviteStatus
 5. [ ] **Build Command:** `npm ci && npm run build`
 6. [ ] **Output Directory:** `dist`
 7. [ ] Add Environment Variable:
-   - [ ] `VITE_API_BASE_URL` = `https://<render-url>`
+   - [ ] `VITE_API_BASE_URL` = `https://leedz-api.onrender.com`
 8. [ ] Deploy
 9. [ ] Verify: Open site, check Network tab for API calls
+10. [ ] **After deploy:** Update CORS_ORIGINS on Render with Vercel URL
 
 ---
 
