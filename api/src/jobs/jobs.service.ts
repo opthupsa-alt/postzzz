@@ -233,6 +233,27 @@ export class JobsService {
     });
   }
 
+  async updateStatus(jobId: string, tenantId: string, status: JobStatus) {
+    const job = await this.prisma.job.findFirst({
+      where: { id: jobId, tenantId },
+    });
+
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    return this.prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status,
+        ...(status === 'RUNNING' ? { startedAt: new Date() } : {}),
+        ...(status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED' 
+          ? { completedAt: new Date() } 
+          : {}),
+      },
+    });
+  }
+
   async getPendingJobs(limit: number = 10) {
     return this.prisma.job.findMany({
       where: {
