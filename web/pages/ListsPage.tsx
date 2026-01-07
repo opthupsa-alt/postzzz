@@ -1,28 +1,60 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ListTodo, Plus, Folder, MoreVertical, Search, MessageSquare, Download, X, Trash2, ArrowLeft } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
+import { getLists, createList, deleteList as apiDeleteList } from '../lib/api';
+import { showToast } from '../components/NotificationToast';
 
 const ListsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { lists, addList, deleteList, savedLeads } = useStore();
+  const { lists, setLists, addList, deleteList, savedLeads } = useStore();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [showOptionsId, setShowOptionsId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleCreateList = (e: React.FormEvent) => {
+  // Load lists from API on mount
+  useEffect(() => {
+    const loadLists = async () => {
+      try {
+        const apiLists = await getLists();
+        const frontendLists = apiLists.map(l => ({
+          id: l.id,
+          name: l.name,
+          count: l._count?.leads || 0,
+          updatedAt: new Date(l.updatedAt).toLocaleDateString('ar-SA'),
+        }));
+        setLists(frontendLists);
+      } catch (err) {
+        console.error('Failed to load lists:', err);
+      }
+    };
+    loadLists();
+  }, [setLists]);
+
+  const handleCreateList = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newListName.trim()) return;
+    if (!newListName.trim() || isLoading) return;
 
-    addList({
-      id: Math.random().toString(36).substr(2, 9),
-      name: newListName,
-      count: 0,
-      updatedAt: 'الآن'
-    });
-    setNewListName('');
-    setShowCreateModal(false);
+    setIsLoading(true);
+    try {
+      const apiList = await createList({ name: newListName });
+      addList({
+        id: apiList.id,
+        name: apiList.name,
+        count: 0,
+        updatedAt: 'الآن'
+      });
+      setNewListName('');
+      setShowCreateModal(false);
+      showToast('SUCCESS', 'تم إنشاء القائمة', `تم إنشاء قائمة "${apiList.name}" بنجاح`);
+    } catch (err) {
+      console.error('Failed to create list:', err);
+      showToast('ERROR', 'فشل إنشاء القائمة', 'حدث خطأ أثناء إنشاء القائمة');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getListLeadsCount = (listId: string) => {
@@ -69,15 +101,22 @@ const ListsPage: React.FC = () => {
                  {showOptionsId === list.id && (
                    <div className="absolute left-0 mt-2 w-48 bg-white border border-gray-100 rounded-2xl shadow-2xl z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
                      <button 
-                       onClick={(e) => {
-                         e.stopPropagation();
-                         deleteList(list.id);
-                         setShowOptionsId(null);
-                       }}
-                       className="w-full text-right px-5 py-3 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
-                     >
-                       <Trash2 size={16} /> حذف القائمة
-                     </button>
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await apiDeleteList(list.id);
+                          deleteList(list.id);
+                          showToast('SUCCESS', 'تم حذف القائمة', 'تم حذف القائمة بنجاح');
+                        } catch (err) {
+                          console.error('Failed to delete list:', err);
+                          showToast('ERROR', 'فشل حذف القائمة', 'حدث خطأ أثناء حذف القائمة');
+                        }
+                        setShowOptionsId(null);
+                      }}
+                      className="w-full text-right px-5 py-3 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                    >
+                      <Trash2 size={16} /> حذف القائمة
+                    </button>
                    </div>
                  )}
                </div>

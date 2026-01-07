@@ -48,6 +48,7 @@ interface AppState {
   deleteApiKey: (id: string) => void;
 
   // List management
+  setLists: (lists: LeadList[]) => void;
   addList: (list: LeadList) => void;
   deleteList: (id: string) => void;
   assignLeadsToList: (leadIds: string[], listId: string) => void;
@@ -120,6 +121,7 @@ export const useStore = create<AppState>((set) => ({
     activities: { ...state.activities, [leadId]: [activity, ...(state.activities[leadId] || [])] }
   })),
   addAuditLog: (log) => set((state) => ({ auditLogs: [log, ...state.auditLogs] })),
+  setLists: (lists) => set({ lists }),
   addList: (list) => set((state) => ({ lists: [list, ...state.lists] })),
   deleteList: (id) => set((state) => ({
     lists: state.lists.filter(l => l.id !== id),
