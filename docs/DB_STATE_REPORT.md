@@ -51,8 +51,8 @@ Queried via API at 2026-01-07 22:15 UTC+3:
 | Table | Purpose | Priority | Status |
 |-------|---------|----------|--------|
 | `leads` | Store prospect/lead data | **P0 Critical** | ✅ **ADDED** |
-| `lists` | Organize leads into lists | P1 High | ❌ Missing |
-| `lead_lists` | Junction table for leads-lists | P1 High | ❌ Missing |
+| `lists` | Organize leads into lists | P1 High | ✅ **ADDED** |
+| `lead_lists` | Junction table for leads-lists | P1 High | ✅ **ADDED** |
 | `reports` | Generated PDF reports | P2 Medium | ❌ Missing |
 | `whatsapp_messages` | Message history | P2 Medium | ❌ Missing |
 | `whatsapp_templates` | Message templates | P2 Medium | ❌ Missing |
