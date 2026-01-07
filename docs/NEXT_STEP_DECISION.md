@@ -1,5 +1,6 @@
 # Next Step Decision
-> What to do after local persistence is complete
+> Updated: 2026-01-07 22:40 UTC+3
+> Branch: `reality-audit-local-first`
 
 ## Current State Summary
 
