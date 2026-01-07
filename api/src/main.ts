@@ -36,8 +36,8 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Id'],
   });
 
-  // Swagger documentation
-  if (process.env.NODE_ENV !== 'production') {
+  // Swagger documentation (enabled unless SWAGGER_DISABLED=true)
+  if (process.env.SWAGGER_DISABLED !== 'true') {
     const config = new DocumentBuilder()
       .setTitle('Leedz API')
       .setDescription('Leedz SaaS Multi-tenant Backend API')
