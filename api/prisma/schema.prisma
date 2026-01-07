@@ -15,21 +15,23 @@ enum TenantStatus {
 }
 
 model Tenant {
-  id          String       @id @default(uuid())
-  name        String
-  slug        String       @unique
-  planId      String?
-  status      TenantStatus @default(ACTIVE)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  auditLogs   AuditLog[]
-  invites     Invite[]
-  jobs        Job[]
-  leads       Lead[]
-  lists       List[]
-  memberships Membership[]
-  reports     Report[]
-  users       User[]
+  id            String         @id @default(uuid())
+  name          String
+  slug          String         @unique
+  planId        String?
+  status        TenantStatus   @default(ACTIVE)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  auditLogs     AuditLog[]
+  invites       Invite[]
+  jobs          Job[]
+  leads         Lead[]
+  lists         List[]
+  memberships   Membership[]
+  reports       Report[]
+  subscription  Subscription?
+  usageCounters UsageCounter[]
+  users         User[]
 
   @@map("tenants")
 }
@@ -171,20 +173,6 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-model Plan {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  displayName String
-  price       Int
-  maxUsers    Int
-  maxLeads    Int
-  maxSearches Int
-  maxMessages Int
-  features    Json
-  createdAt   DateTime @default(now())
-
-  @@map("plans")
-}
 
 enum Role {
   OWNER
@@ -315,4 +303,91 @@ model Report {
   @@index([tenantId, createdAt])
   @@index([leadId])
   @@map("reports")
+}
+
+// ==================== Plans & Subscriptions ====================
+
+model Plan {
+  id              String         @id @default(uuid())
+  name            String         @unique
+  nameAr          String
+  description     String?
+  descriptionAr   String?
+  price           Decimal        @db.Decimal(10, 2)
+  yearlyPrice     Decimal        @db.Decimal(10, 2)
+  currency        String         @default("SAR")
+  
+  // Limits (-1 = unlimited)
+  seatsLimit      Int            @default(1)
+  leadsLimit      Int            @default(100)
+  searchesLimit   Int            @default(10)
+  messagesLimit   Int            @default(50)
+  
+  // Features (JSON array of feature keys)
+  features        String[]       @default([])
+  
+  isActive        Boolean        @default(true)
+  sortOrder       Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  subscriptions   Subscription[]
+
+  @@map("plans")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  TRIALING
+  EXPIRED
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+model Subscription {
+  id                  String             @id @default(uuid())
+  tenantId            String             @unique
+  planId              String
+  status              SubscriptionStatus @default(ACTIVE)
+  billingCycle        BillingCycle       @default(MONTHLY)
+  currentPeriodStart  DateTime           @default(now())
+  currentPeriodEnd    DateTime
+  cancelAtPeriodEnd   Boolean            @default(false)
+  trialEndsAt         DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  tenant              Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan                Plan               @relation(fields: [planId], references: [id])
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+enum UsageMetric {
+  SEATS
+  LEADS
+  SEARCHES
+  MESSAGES
+}
+
+model UsageCounter {
+  id        String      @id @default(uuid())
+  tenantId  String
+  metric    UsageMetric
+  value     Int         @default(0)
+  period    String      // Format: "2026-01" for monthly metrics
+  updatedAt DateTime    @updatedAt
+
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, metric, period])
+  @@index([tenantId])
+  @@map("usage_counters")
 }
