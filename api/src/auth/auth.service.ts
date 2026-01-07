@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -13,6 +14,8 @@ import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -97,12 +100,14 @@ export class AuthService {
     });
 
     if (!user) {
+      this.logger.warn(`Login failed: user not found for email ${dto.email.toLowerCase()}`);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
 
     if (!isPasswordValid) {
+      this.logger.warn(`Login failed: invalid password for user ${user.id}`);
       throw new UnauthorizedException('Invalid credentials');
     }
 

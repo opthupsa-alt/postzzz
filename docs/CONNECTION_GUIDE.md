@@ -244,6 +244,55 @@ npx prisma generate
 
 ---
 
+## 🗄️ Database Policy (Dev vs Prod)
+
+### Current Setup (⚠️ Risk)
+
+حالياً، Local Development و Production يستخدمان **نفس قاعدة البيانات** (Neon `neondb`).
+
+**المخاطر:**
+- بيانات الاختبار تختلط مع بيانات الإنتاج
+- خطأ في migration قد يؤثر على الإنتاج
+- صعوبة في تنظيف بيانات الاختبار
+
+### الحل المقترح: Neon Branches
+
+Neon يدعم **Database Branches** - نسخة منفصلة من قاعدة البيانات للتطوير.
+
+#### خطوات إنشاء Dev Branch:
+
+1. **افتح Neon Console:** https://console.neon.tech
+2. **اختر المشروع:** `ep-patient-forest-a4000zkv`
+3. **Branches → Create Branch**
+4. **Name:** `dev-local`
+5. **Parent:** `main`
+6. **انسخ Connection String الجديد**
+
+#### تحديث api/.env للـ Dev Branch:
+
+```env
+# Dev Branch (للتطوير المحلي)
+DATABASE_URL=postgresql://neondb_owner:PASSWORD@ep-xxx-dev-local.us-east-1.aws.neon.tech/neondb?sslmode=require
+DATABASE_URL_UNPOOLED=postgresql://neondb_owner:PASSWORD@ep-xxx-dev-local.us-east-1.aws.neon.tech/neondb?sslmode=require
+```
+
+### سياسة الاستخدام
+
+| Environment | Database | Branch | Purpose |
+|-------------|----------|--------|---------|
+| **Local Dev** | Neon | `dev-local` | تطوير واختبار |
+| **Production** | Neon | `main` | بيانات حقيقية |
+| **CI/CD** | Neon | `test` (optional) | اختبارات تلقائية |
+
+### ⚠️ قواعد مهمة
+
+1. **لا تشغل `prisma migrate dev` على production** - استخدم `migrate deploy` فقط
+2. **لا تحذف بيانات من main branch** - استخدم dev-local للتجارب
+3. **Seed data فقط في dev-local** - لا تضف بيانات وهمية في production
+4. **Reset dev-local بانتظام** - يمكنك حذف وإعادة إنشاء الـ branch
+
+---
+
 ## 🔐 Security Notes
 
 1. **Never commit `.env` files** - They contain secrets
