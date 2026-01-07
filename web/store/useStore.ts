@@ -69,32 +69,17 @@ interface AppState {
 export const useStore = create<AppState>((set) => ({
   jobs: [],
   leads: [],
-  savedLeads: [
-    { id: 'CRM-1', companyName: 'أرامكو السعودية', industry: 'طاقة', city: 'الظهران', status: 'QUALIFIED', evidenceCount: 5, hasReport: true, tags: ['VIP', 'Enterprise'], listId: '1' },
-    { id: 'CRM-2', companyName: 'بنك الراجحي', industry: 'مالية', city: 'الرياض', status: 'CONTACTED', evidenceCount: 2, hasReport: false, tags: ['Banking'], listId: '1' },
-    { id: 'CRM-3', companyName: 'مطاعم الرومانسية', industry: 'أغذية', city: 'جدة', status: 'NEW', evidenceCount: 1, hasReport: true, listId: '2' }
-  ],
-  lists: [
-    { id: '1', name: 'عملاء الرياض - تكنولوجيا', count: 42, updatedAt: 'منذ يومين' },
-    { id: '2', name: 'مطاعم جدة المستهدفة', count: 15, updatedAt: 'منذ 5 أيام' },
-  ],
-  apiKeys: [
-    { id: 'k1', label: 'تطبيق الويب الرئيسي', key: 'lz_live_8s92jhsk92msh72', createdAt: new Date().toISOString() }
-  ],
+  savedLeads: [],
+  lists: [],
+  apiKeys: [],
   evidence: {},
   reports: {},
   activities: {},
-  auditLogs: [
-    { id: '1', action: 'تصدير بيانات', user: 'أحمد محمد', target: 'قائمة الرياض', timestamp: new Date(Date.now() - 3600000).toISOString() },
-    { id: '2', action: 'حذف عميل', user: 'سارة خالد', target: 'شركة الأمل', timestamp: new Date(Date.now() - 7200000).toISOString() }
-  ],
+  auditLogs: [],
   templates: [
     { id: '1', name: 'تعريف عام', content: 'مرحباً فريق ${name}، نود تقديم خدماتنا التقنية لكم بناءً على فحصنا الأخير لنشاطكم.' },
   ],
-  team: [
-    { id: 'T1', name: 'أحمد محمد', email: 'ahmed@leadz.sa', role: 'ADMIN', status: 'ONLINE', joinedAt: '2023-01-01' },
-    { id: 'T2', name: 'سارة خالد', email: 'sara@leadz.sa', role: 'SALES', status: 'ONLINE', joinedAt: '2023-05-12' },
-  ],
+  team: [],
   activeJobId: null,
   connectedPhone: '+966 50 123 4567',
   notificationPreferences: {

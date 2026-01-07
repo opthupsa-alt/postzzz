@@ -8,6 +8,7 @@ import SmartFilters from '../components/SmartFilters';
 import BulkActionsBar from '../components/BulkActionsBar';
 import LeadGridCard from '../components/LeadGridCard';
 import { showToast } from '../components/NotificationToast';
+import { createJob } from '../lib/api';
 
 const ProspectingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -39,52 +40,62 @@ const ProspectingPage: React.FC = () => {
 
     setIsSearching(true);
     setSelectedLeadIds([]);
-    const jobId = Math.random().toString(36).substr(2, 9);
     
     showToast('JOB', 'بدء البحث الذكي', `جاري البحث عن "${keyword}" في مدينة ${city}...`);
 
-    addJob({
-      id: jobId,
-      type: 'SEARCH',
-      status: JobStatus.RUNNING,
-      progress: 0,
-      message: 'بدء تحليل كلمات البحث...',
-      createdAt: new Date().toISOString()
-    });
+    try {
+      // Create real job in API
+      const apiJob = await createJob('PROSPECT_SEARCH', { keyword, city });
+      const jobId = apiJob.id;
 
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.floor(Math.random() * 25);
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-        
-        const mockLeads: Lead[] = [
-          { id: 'S1', companyName: 'مؤسسة الحلول الذكية', industry: 'برمجيات', city: 'الرياض', phone: '0501234567', website: 'https://smart.sa', status: 'NEW', evidenceCount: 0, hasReport: false, tags: ['تكنولوجيا'] },
-          { id: 'S2', companyName: 'مطعم مذاق الشرق', industry: 'أغذية', city: 'الرياض', phone: '0502234568', website: 'https://taste.sa', status: 'NEW', evidenceCount: 0, hasReport: false, tags: ['مطاعم'] },
-          { id: 'S3', companyName: 'المركز الطبي المتقدم', industry: 'رعاية صحية', city: 'الرياض', status: 'NEW', evidenceCount: 0, hasReport: false, tags: ['صحة'] },
-          { id: 'S4', companyName: 'مكتب المهندس خالد', industry: 'هندسة', city: 'الرياض', phone: '0504434570', status: 'NEW', evidenceCount: 0, hasReport: false, tags: ['هندسة'] },
-          { id: 'S5', companyName: 'شركة نماء العقارية', industry: 'عقارات', city: 'الرياض', phone: '0505534571', website: 'https://namaa.sa', status: 'NEW', evidenceCount: 0, hasReport: false, tags: ['عقارات'] },
-          { id: 'S6', companyName: 'مخابز اليحيى الحديثة', industry: 'أغذية', city: 'الرياض', phone: '0506634572', status: 'NEW', evidenceCount: 0, hasReport: false, tags: ['أغذية'] },
-        ];
-        
-        setLeads(mockLeads);
-        updateJob(jobId, { 
-          status: JobStatus.SUCCESS, 
-          progress: 100, 
-          message: `اكتمل البحث: تم العثور على ${mockLeads.length} عملاء`
-        });
-        showToast('SUCCESS', 'اكتمل البحث', `تم العثور على ${mockLeads.length} عملاء جدد تطابق معاييرك.`);
-        setSearchHistory([{ query: `${keyword} - ${city}`, date: 'الآن', results: mockLeads.length }, ...searchHistory]);
-        setIsSearching(false);
-      } else {
-        const messages = ['تحميل البيانات من الخرائط...', 'استخراج العناوين والنشاط...', 'فلترة النتائج المكررة...', 'تحليل جودة البيانات...'];
-        updateJob(jobId, { 
-          progress, 
-          message: messages[Math.floor(progress / 25)] 
-        });
-      }
-    }, 600);
+      addJob({
+        id: jobId,
+        type: 'SEARCH',
+        status: JobStatus.RUNNING,
+        progress: 0,
+        message: 'بدء تحليل كلمات البحث...',
+        createdAt: new Date().toISOString()
+      });
+
+      // Simulate progress (in real app, this would poll the API or use WebSocket)
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += Math.floor(Math.random() * 25);
+        if (progress >= 100) {
+          progress = 100;
+          clearInterval(interval);
+          
+          // Mock leads for demo (in real app, these would come from the job result)
+          const mockLeads: Lead[] = [
+            { id: `${jobId}-1`, companyName: 'مؤسسة الحلول الذكية', industry: keyword, city: city, phone: '0501234567', website: 'https://smart.sa', status: 'NEW', evidenceCount: 0, hasReport: false, tags: [keyword] },
+            { id: `${jobId}-2`, companyName: 'مطعم مذاق الشرق', industry: keyword, city: city, phone: '0502234568', website: 'https://taste.sa', status: 'NEW', evidenceCount: 0, hasReport: false, tags: [keyword] },
+            { id: `${jobId}-3`, companyName: 'المركز الطبي المتقدم', industry: keyword, city: city, status: 'NEW', evidenceCount: 0, hasReport: false, tags: [keyword] },
+            { id: `${jobId}-4`, companyName: 'مكتب المهندس خالد', industry: keyword, city: city, phone: '0504434570', status: 'NEW', evidenceCount: 0, hasReport: false, tags: [keyword] },
+            { id: `${jobId}-5`, companyName: 'شركة نماء العقارية', industry: keyword, city: city, phone: '0505534571', website: 'https://namaa.sa', status: 'NEW', evidenceCount: 0, hasReport: false, tags: [keyword] },
+          ];
+          
+          setLeads(mockLeads);
+          updateJob(jobId, { 
+            status: JobStatus.SUCCESS, 
+            progress: 100, 
+            message: `اكتمل البحث: تم العثور على ${mockLeads.length} عملاء`
+          });
+          showToast('SUCCESS', 'اكتمل البحث', `تم العثور على ${mockLeads.length} عملاء جدد تطابق معاييرك.`);
+          setSearchHistory([{ query: `${keyword} - ${city}`, date: 'الآن', results: mockLeads.length }, ...searchHistory]);
+          setIsSearching(false);
+        } else {
+          const messages = ['تحميل البيانات من الخرائط...', 'استخراج العناوين والنشاط...', 'فلترة النتائج المكررة...', 'تحليل جودة البيانات...'];
+          updateJob(jobId, { 
+            progress, 
+            message: messages[Math.floor(progress / 25)] 
+          });
+        }
+      }, 600);
+    } catch (err) {
+      console.error('Failed to create job:', err);
+      showToast('ERROR', 'فشل البحث', 'حدث خطأ أثناء إنشاء عملية البحث');
+      setIsSearching(false);
+    }
   };
 
   const toggleSelectLead = (id: string, e: React.MouseEvent) => {
