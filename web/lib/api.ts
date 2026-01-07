@@ -466,3 +466,127 @@ export async function toggleUserSuperAdmin(id: string, isSuperAdmin: boolean): P
     body: JSON.stringify({ isSuperAdmin }),
   });
 }
+
+// ==================== Plans API ====================
+
+export interface Plan {
+  id: string;
+  name: string;
+  nameAr: string;
+  description?: string;
+  descriptionAr?: string;
+  price: number;
+  yearlyPrice: number;
+  currency: string;
+  seatsLimit: number;
+  leadsLimit: number;
+  searchesLimit: number;
+  messagesLimit: number;
+  features: string[];
+  isActive: boolean;
+  sortOrder: number;
+  _count?: { subscriptions: number };
+}
+
+export async function getPlans(includeInactive = false): Promise<Plan[]> {
+  const query = includeInactive ? '?includeInactive=true' : '';
+  return apiRequest(`/plans${query}`);
+}
+
+export async function getPlan(id: string): Promise<Plan> {
+  return apiRequest(`/plans/${id}`);
+}
+
+export async function createPlan(data: Partial<Plan>): Promise<Plan> {
+  return apiRequest('/plans', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updatePlan(id: string, data: Partial<Plan>): Promise<Plan> {
+  return apiRequest(`/plans/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function togglePlanActive(id: string): Promise<Plan> {
+  return apiRequest(`/plans/${id}/toggle-active`, {
+    method: 'PATCH',
+  });
+}
+
+export async function deletePlan(id: string): Promise<void> {
+  return apiRequest(`/plans/${id}`, { method: 'DELETE' });
+}
+
+// ==================== Subscriptions API ====================
+
+export interface Subscription {
+  id: string;
+  tenantId: string;
+  planId: string;
+  status: 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'TRIALING' | 'EXPIRED';
+  billingCycle: 'MONTHLY' | 'YEARLY';
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  cancelAtPeriodEnd: boolean;
+  trialEndsAt?: string;
+  plan: Plan;
+  tenant?: { id: string; name: string; slug: string };
+}
+
+export interface SubscriptionWithUsage {
+  subscription: Subscription;
+  usage: {
+    SEATS: number;
+    LEADS: number;
+    SEARCHES: number;
+    MESSAGES: number;
+  };
+  limits: {
+    SEATS: number;
+    LEADS: number;
+    SEARCHES: number;
+    MESSAGES: number;
+  };
+}
+
+export async function getMySubscription(): Promise<SubscriptionWithUsage> {
+  return apiRequest('/subscriptions/me');
+}
+
+export async function getSubscriptions(options?: { status?: string; limit?: number; offset?: number }): Promise<{ subscriptions: Subscription[]; total: number }> {
+  const params = new URLSearchParams();
+  if (options?.status) params.append('status', options.status);
+  if (options?.limit) params.append('limit', options.limit.toString());
+  if (options?.offset) params.append('offset', options.offset.toString());
+  const query = params.toString();
+  return apiRequest(`/subscriptions${query ? `?${query}` : ''}`);
+}
+
+export async function getSubscriptionByTenant(tenantId: string): Promise<SubscriptionWithUsage> {
+  return apiRequest(`/subscriptions/tenant/${tenantId}`);
+}
+
+export async function createSubscription(data: { tenantId: string; planId: string; billingCycle?: string }): Promise<Subscription> {
+  return apiRequest('/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function changeSubscriptionPlan(tenantId: string, planId: string): Promise<Subscription> {
+  return apiRequest(`/subscriptions/tenant/${tenantId}/plan`, {
+    method: 'PATCH',
+    body: JSON.stringify({ planId }),
+  });
+}
+
+export async function cancelSubscription(tenantId: string, immediate = false): Promise<Subscription> {
+  return apiRequest(`/subscriptions/tenant/${tenantId}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ immediate }),
+  });
+}

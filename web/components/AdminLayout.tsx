@@ -9,7 +9,8 @@ const AdminLayout: React.FC = () => {
     { to: '/admin', icon: LayoutDashboard, label: 'لوحة التحكم', end: true },
     { to: '/admin/tenants', icon: Building2, label: 'المنظمات' },
     { to: '/admin/users', icon: Users, label: 'المستخدمين' },
-    { to: '/admin/subscriptions', icon: CreditCard, label: 'الاشتراكات', disabled: true },
+    { to: '/admin/plans', icon: CreditCard, label: 'الباقات' },
+    { to: '/admin/subscriptions', icon: CreditCard, label: 'الاشتراكات' },
     { to: '/admin/settings', icon: Settings, label: 'الإعدادات', disabled: true },
   ];
 

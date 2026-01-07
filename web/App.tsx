@@ -25,6 +25,8 @@ import LeadImportPage from './pages/LeadImportPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminTenants from './pages/admin/AdminTenants';
 import AdminUsers from './pages/admin/AdminUsers';
+import AdminPlans from './pages/admin/AdminPlans';
+import AdminSubscriptions from './pages/admin/AdminSubscriptions';
 
 const App = () => {
   return (
@@ -46,6 +48,8 @@ const App = () => {
           <Route index element={<AdminDashboard />} />
           <Route path="tenants" element={<AdminTenants />} />
           <Route path="users" element={<AdminUsers />} />
+          <Route path="plans" element={<AdminPlans />} />
+          <Route path="subscriptions" element={<AdminSubscriptions />} />
         </Route>
 
         <Route path="/app/*" element={
