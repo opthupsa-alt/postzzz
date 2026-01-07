@@ -249,3 +249,65 @@ export async function getLeadsCount(status?: string): Promise<{ count: number }>
   const query = status ? `?status=${status}` : '';
   return apiRequest(`/leads/count${query}`);
 }
+
+// Lists API
+export interface List {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { leads: number };
+}
+
+export interface CreateListDto {
+  name: string;
+  description?: string;
+  color?: string;
+}
+
+export async function getLists(): Promise<List[]> {
+  return apiRequest('/lists');
+}
+
+export async function getList(id: string): Promise<List> {
+  return apiRequest(`/lists/${id}`);
+}
+
+export async function createList(data: CreateListDto): Promise<List> {
+  return apiRequest('/lists', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateList(id: string, data: Partial<CreateListDto>): Promise<List> {
+  return apiRequest(`/lists/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteList(id: string): Promise<List> {
+  return apiRequest(`/lists/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getLeadsInList(listId: string): Promise<Lead[]> {
+  return apiRequest(`/lists/${listId}/leads`);
+}
+
+export async function addLeadsToList(listId: string, leadIds: string[]): Promise<{ count: number }> {
+  return apiRequest(`/lists/${listId}/leads`, {
+    method: 'POST',
+    body: JSON.stringify({ leadIds }),
+  });
+}
+
+export async function removeLeadFromList(listId: string, leadId: string): Promise<void> {
+  return apiRequest(`/lists/${listId}/leads/${leadId}`, {
+    method: 'DELETE',
+  });
+}
