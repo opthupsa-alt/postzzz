@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Leedz - Lead Generation",
+  "name_localized": {
+    "ar": "ليدز - توليد العملاء"
+  },
+  "version": "1.0.0",
+  "description": "Chrome extension for Leedz platform - Search and manage leads directly from your browser",
+  "description_localized": {
+    "ar": "إضافة كروم لمنصة ليدز - ابحث وأدر العملاء مباشرة من متصفحك"
+  },
+  
+  "permissions": [
+    "storage",
+    "tabs",
+    "sidePanel",
+    "activeTab"
+  ],
+  
+  "host_permissions": [
+    "http://localhost:3001/*",
+    "https://www.google.com/maps/*",
+    "https://maps.google.com/*"
+  ],
+  
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  
+  "action": {
+    "default_title": "Leedz"
+  }
+}
