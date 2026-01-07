@@ -10,6 +10,7 @@
 .env.*.local
 !.env.example
 ops/local/
+ops/*.env
 **/SECRETS.md
 *.secrets.*
 
