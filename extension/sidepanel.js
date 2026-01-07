@@ -58,6 +58,10 @@ function showApp(user) {
   }
   
   updateCurrentPage();
+  
+  // Connect WebSocket after showing app
+  sendMessage({ type: 'CONNECT_WEBSOCKET' });
+  updateConnectionStatus();
 }
 
 function showLogin() {
@@ -81,6 +85,36 @@ async function updateCurrentPage() {
     currentPageUrl.textContent = 'خطأ في قراءة الصفحة';
   }
 }
+
+async function updateConnectionStatus() {
+  try {
+    const response = await sendMessage({ type: 'GET_WS_STATUS' });
+    if (response?.connected) {
+      connectionStatus.className = 'status-badge connected';
+      connectionStatus.innerHTML = '<span>●</span> متصل بالمنصة';
+    } else {
+      connectionStatus.className = 'status-badge disconnected';
+      connectionStatus.innerHTML = '<span>●</span> غير متصل';
+    }
+  } catch (error) {
+    connectionStatus.className = 'status-badge disconnected';
+    connectionStatus.innerHTML = '<span>●</span> خطأ في الاتصال';
+  }
+}
+
+// Listen for WebSocket status updates from background
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === 'WS_CONNECTED' || message.type === 'WS_AUTHENTICATED') {
+    connectionStatus.className = 'status-badge connected';
+    connectionStatus.innerHTML = '<span>●</span> متصل بالمنصة';
+  } else if (message.type === 'WS_DISCONNECTED') {
+    connectionStatus.className = 'status-badge disconnected';
+    connectionStatus.innerHTML = '<span>●</span> غير متصل';
+  } else if (message.type === 'JOB_RECEIVED') {
+    console.log('Job received:', message.payload);
+    // Could show notification or update UI
+  }
+});
 
 // ==================== Auth ====================
 

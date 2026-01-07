@@ -14,6 +14,7 @@ import { ReportsModule } from './reports/reports.module';
 import { AdminModule } from './admin/admin.module';
 import { PlansModule } from './plans/plans.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { GatewayModule } from './gateway/gateway.module';
 import { AgentModule } from './agent/agent.module';
 import { AuditModule } from './audit/audit.module';
 
@@ -61,6 +62,7 @@ import { AuditModule } from './audit/audit.module';
     AdminModule,
     PlansModule,
     SubscriptionsModule,
+    GatewayModule,
     AgentModule,
   ],
 })
