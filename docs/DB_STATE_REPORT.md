@@ -53,7 +53,7 @@ Queried via API at 2026-01-07 22:15 UTC+3:
 | `leads` | Store prospect/lead data | **P0 Critical** | ✅ **ADDED** |
 | `lists` | Organize leads into lists | P1 High | ✅ **ADDED** |
 | `lead_lists` | Junction table for leads-lists | P1 High | ✅ **ADDED** |
-| `reports` | Generated PDF reports | P2 Medium | ❌ Missing |
+| `reports` | Generated PDF reports | P2 Medium | ✅ **ADDED** |
 | `whatsapp_messages` | Message history | P2 Medium | ❌ Missing |
 | `whatsapp_templates` | Message templates | P2 Medium | ❌ Missing |
 
