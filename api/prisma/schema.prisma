@@ -1,6 +1,3 @@
-// Prisma Schema for Leedz SaaS Multi-tenant Backend
-// ═══════════════════════════════════════════════════════════════════════════════
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,70 +8,166 @@ datasource db {
   directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TENANT & ORGANIZATION
-// ═══════════════════════════════════════════════════════════════════════════════
-
 model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique
-  planId    String?
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  users       User[]
-  memberships Membership[]
+  id          String       @id @default(uuid())
+  name        String
+  slug        String       @unique
+  planId      String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  auditLogs   AuditLog[]
   invites     Invite[]
   jobs        Job[]
-  auditLogs   AuditLog[]
+  memberships Membership[]
+  users       User[]
 
   @@map("tenants")
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// USER & AUTH
-// ═══════════════════════════════════════════════════════════════════════════════
-
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  avatarUrl    String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Default tenant for quick access
+  id              String       @id @default(uuid())
+  email           String       @unique
+  passwordHash    String
+  name            String
+  avatarUrl       String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
   defaultTenantId String?
-  defaultTenant   Tenant? @relation(fields: [defaultTenantId], references: [id])
-
-  // Relations
-  memberships Membership[]
-  invitesSent Invite[]     @relation("InviteSender")
-  jobs        Job[]
-  auditLogs   AuditLog[]
+  auditLogs       AuditLog[]
+  invitesSent     Invite[]     @relation("InviteSender")
+  jobs            Job[]
+  memberships     Membership[]
+  defaultTenant   Tenant?      @relation(fields: [defaultTenantId], references: [id])
 
   @@map("users")
 }
 
 model Membership {
-  id       String @id @default(uuid())
-  userId   String
-  tenantId String
-  role     Role   @default(SALES)
-
+  id        String   @id @default(uuid())
+  userId    String
+  tenantId  String
+  role      Role     @default(SALES)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, tenantId])
   @@map("memberships")
+}
+
+model Invite {
+  id         String       @id @default(uuid())
+  email      String
+  tenantId   String
+  role       Role         @default(SALES)
+  token      String       @unique
+  status     InviteStatus @default(PENDING)
+  expiresAt  DateTime
+  createdAt  DateTime     @default(now())
+  acceptedAt DateTime?
+  inviterId  String
+  inviter    User         @relation("InviteSender", fields: [inviterId], references: [id])
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([email, status])
+  @@map("invites")
+}
+
+model Job {
+  id              String     @id @default(uuid())
+  tenantId        String
+  type            String
+  status          JobStatus  @default(PENDING)
+  progress        Int        @default(0)
+  errorCode       String?
+  needsUserAction Boolean    @default(false)
+  input           Json?
+  output          Json?
+  error           Json?
+  createdAt       DateTime   @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdById     String
+  assignedAgentId String?
+  evidence        Evidence[]
+  jobLogs         JobLog[]
+  createdBy       User       @relation(fields: [createdById], references: [id])
+  tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@index([assignedAgentId, status])
+  @@map("jobs")
+}
+
+model JobLog {
+  id        String   @id @default(uuid())
+  jobId     String
+  level     String   @default("INFO")
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
+  @@map("job_logs")
+}
+
+model Evidence {
+  id          String   @id @default(uuid())
+  jobId       String
+  type        String
+  title       String
+  source      String
+  url         String?
+  snippet     String
+  confidence  String
+  hash        String
+  sizeBytes   Int
+  collectedAt DateTime
+  createdAt   DateTime @default(now())
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([hash])
+  @@map("evidence")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  userId     String?
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}
+
+model Plan {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  displayName String
+  price       Int
+  maxUsers    Int
+  maxLeads    Int
+  maxSearches Int
+  maxMessages Int
+  features    Json
+  createdAt   DateTime @default(now())
+
+  @@map("plans")
 }
 
 enum Role {
@@ -84,74 +177,11 @@ enum Role {
   SALES
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// INVITES
-// ═══════════════════════════════════════════════════════════════════════════════
-
-model Invite {
-  id        String       @id @default(uuid())
-  email     String
-  tenantId  String
-  role      Role         @default(SALES)
-  token     String       @unique
-  status    InviteStatus @default(PENDING)
-  expiresAt DateTime
-
-  createdAt  DateTime  @default(now())
-  acceptedAt DateTime?
-
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  inviterId String
-  inviter   User   @relation("InviteSender", fields: [inviterId], references: [id])
-
-  @@index([tenantId, status])
-  @@index([email, status])
-  @@map("invites")
-}
-
 enum InviteStatus {
   PENDING
   ACCEPTED
   REJECTED
   EXPIRED
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// JOBS & EXECUTION
-// ═══════════════════════════════════════════════════════════════════════════════
-
-model Job {
-  id              String    @id @default(uuid())
-  tenantId        String
-  type            String
-  status          JobStatus @default(PENDING)
-  progress        Int       @default(0)
-  errorCode       String?
-  needsUserAction Boolean   @default(false)
-
-  // Job data
-  input  Json?
-  output Json?
-  error  Json?
-
-  // Timestamps
-  createdAt   DateTime  @default(now())
-  startedAt   DateTime?
-  completedAt DateTime?
-
-  // Relations
-  createdById     String
-  createdBy       User     @relation(fields: [createdById], references: [id])
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  assignedAgentId String?
-
-  evidence Evidence[]
-  jobLogs  JobLog[]
-
-  @@index([tenantId, status])
-  @@index([tenantId, createdAt])
-  @@index([assignedAgentId, status])
-  @@map("jobs")
 }
 
 enum JobStatus {
@@ -160,95 +190,4 @@ enum JobStatus {
   COMPLETED
   FAILED
   CANCELLED
-}
-
-model JobLog {
-  id       String   @id @default(uuid())
-  jobId    String
-  level    String   @default("INFO")
-  message  String
-  metadata Json?
-
-  createdAt DateTime @default(now())
-
-  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  @@index([jobId, createdAt])
-  @@map("job_logs")
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// EVIDENCE
-// ═══════════════════════════════════════════════════════════════════════════════
-
-model Evidence {
-  id         String @id @default(uuid())
-  jobId      String
-  type       String
-  title      String
-  source     String
-  url        String?
-  snippet    String
-  confidence String
-  hash       String
-  sizeBytes  Int
-
-  collectedAt DateTime
-  createdAt   DateTime @default(now())
-
-  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  @@index([jobId])
-  @@index([hash])
-  @@map("evidence")
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// AUDIT
-// ═══════════════════════════════════════════════════════════════════════════════
-
-model AuditLog {
-  id         String  @id @default(uuid())
-  tenantId   String
-  userId     String?
-  action     String
-  entityType String?
-  entityId   String?
-  metadata   Json?
-  ipAddress  String?
-  userAgent  String?
-
-  createdAt DateTime @default(now())
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User?  @relation(fields: [userId], references: [id])
-
-  @@index([tenantId, createdAt])
-  @@index([tenantId, action])
-  @@index([userId, createdAt])
-  @@map("audit_logs")
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// FEATURE FLAGS & PLANS (Placeholder for future)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-model Plan {
-  id          String @id @default(uuid())
-  name        String @unique
-  displayName String
-  price       Int    // Monthly price in cents
-
-  // Quotas
-  maxUsers    Int
-  maxLeads    Int
-  maxSearches Int
-  maxMessages Int
-
-  // Feature flags
-  features Json
-
-  createdAt DateTime @default(now())
-
-  @@map("plans")
 }

@@ -351,7 +351,7 @@ npm run dev
 # Terminal 2: Web Frontend
 cd web
 npm run dev
-# → http://localhost:5173
+# → http://localhost:3000
 ```
 
 ### Scripts المتاحة
@@ -393,6 +393,19 @@ npm run dev
 
 ### 1. مشاكل اتصال Database
 
+#### Error: `Can't reach database server` (Pooled connection)
+
+```bash
+# المشكلة: Neon Pooler قد لا يعمل من بعض الشبكات
+# الحل: استخدم Direct connection للتطوير المحلي
+
+# في api/.env، غيّر DATABASE_URL من:
+# postgresql://user:pass@ep-xxx-pooler.region.neon.tech/db
+# إلى:
+# postgresql://user:pass@ep-xxx.region.neon.tech/db
+# (أزل كلمة -pooler من الـ host)
+```
+
 #### Error: `SSL required`
 
 ```bash
@@ -403,8 +416,8 @@ DATABASE_URL="postgresql://...?sslmode=require"
 #### Error: `Too many connections`
 
 ```bash
-# استخدم Pooled connection للـ runtime
-# استخدم Unpooled فقط للـ migrations
+# استخدم Pooled connection للـ production
+# استخدم Direct (Unpooled) للـ development و migrations
 ```
 
 #### Error: `Connection timeout`
@@ -414,6 +427,15 @@ DATABASE_URL="postgresql://...?sslmode=require"
 # 1. Neon project is active (not suspended)
 # 2. IP not blocked
 # 3. Correct credentials
+```
+
+#### Error: `EPERM: operation not permitted` (Prisma generate)
+
+```bash
+# الملف مقفل من عملية Node أخرى
+# الحل: أوقف جميع عمليات Node ثم أعد المحاولة
+Get-Process -Name "node" | Stop-Process -Force
+npx prisma generate
 ```
 
 ### 2. مشاكل Vercel Environment Variables

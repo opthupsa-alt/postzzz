@@ -302,6 +302,7 @@ Enums: Role (OWNER, ADMIN, MANAGER, SALES), JobStatus, InviteStatus
 | يناير 2026 | Sprint 1 | Swagger Basic Auth + Deploy configs finalized | - |
 | يناير 2026 | Sprint 1 | POST_DEPLOY_SMOKETEST.md created + Final deploy prep | - |
 | يناير 2026 | Sprint 1 | **Render API DEPLOYED** - https://leedz-api.onrender.com | - |
+| يناير 2026 | Sprint 1 | **Local Dev Environment WORKING** - API:3001 + Web:3000 | - |
 
 ---
 
