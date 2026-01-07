@@ -2,6 +2,7 @@
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import AppShell from './components/AppShell';
+import AdminLayout from './components/AdminLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import ProspectingPage from './pages/ProspectingPage';
 import LeadDetailPage from './pages/LeadDetailPage';
@@ -21,6 +22,9 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ExtensionSidePanel from './pages/ExtensionSidePanel';
 import NewLeadPage from './pages/NewLeadPage';
 import LeadImportPage from './pages/LeadImportPage';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminTenants from './pages/admin/AdminTenants';
+import AdminUsers from './pages/admin/AdminUsers';
 
 const App = () => {
   return (
@@ -33,6 +37,17 @@ const App = () => {
         
         <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
         
+        {/* Admin Panel Routes */}
+        <Route path="/admin" element={
+          <ProtectedRoute>
+            <AdminLayout />
+          </ProtectedRoute>
+        }>
+          <Route index element={<AdminDashboard />} />
+          <Route path="tenants" element={<AdminTenants />} />
+          <Route path="users" element={<AdminUsers />} />
+        </Route>
+
         <Route path="/app/*" element={
           <ProtectedRoute>
             <AppShell>

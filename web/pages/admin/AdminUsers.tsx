@@ -1,0 +1,197 @@
+import React, { useState, useEffect } from 'react';
+import { Users, Shield, MoreVertical, CheckCircle, XCircle, ShieldCheck, ShieldOff, AlertCircle } from 'lucide-react';
+import { getAdminUsers, updateUserStatus, toggleUserSuperAdmin, AdminUser } from '../../lib/api';
+import { showToast } from '../../components/NotificationToast';
+
+const AdminUsers: React.FC = () => {
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showOptionsId, setShowOptionsId] = useState<string | null>(null);
+
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      const data = await getAdminUsers();
+      setUsers(data.users);
+      setTotal(data.total);
+    } catch (err: any) {
+      setError(err.message || 'فشل تحميل المستخدمين');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const handleStatusChange = async (id: string, isActive: boolean) => {
+    try {
+      await updateUserStatus(id, isActive);
+      showToast('SUCCESS', 'تم التحديث', `تم ${isActive ? 'تفعيل' : 'تعطيل'} المستخدم`);
+      loadUsers();
+    } catch (err: any) {
+      showToast('ERROR', 'خطأ', err.message || 'فشل تحديث الحالة');
+    }
+    setShowOptionsId(null);
+  };
+
+  const handleSuperAdminToggle = async (id: string, isSuperAdmin: boolean) => {
+    try {
+      await toggleUserSuperAdmin(id, isSuperAdmin);
+      showToast('SUCCESS', 'تم التحديث', `تم ${isSuperAdmin ? 'منح' : 'سحب'} صلاحيات Super Admin`);
+      loadUsers();
+    } catch (err: any) {
+      showToast('ERROR', 'خطأ', err.message || 'فشل تحديث الصلاحيات');
+    }
+    setShowOptionsId(null);
+  };
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-2xl p-6 flex items-center gap-4">
+        <AlertCircle className="text-red-500" size={24} />
+        <div>
+          <h3 className="font-bold text-red-800">خطأ</h3>
+          <p className="text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div>
+        <h1 className="text-3xl font-black text-gray-900">إدارة المستخدمين</h1>
+        <p className="text-gray-500 font-medium">إجمالي {total} مستخدم</p>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="text-right px-6 py-4 text-xs font-black text-gray-500 uppercase tracking-wider">المستخدم</th>
+                <th className="text-right px-6 py-4 text-xs font-black text-gray-500 uppercase tracking-wider">المنظمات</th>
+                <th className="text-right px-6 py-4 text-xs font-black text-gray-500 uppercase tracking-wider">الصلاحيات</th>
+                <th className="text-right px-6 py-4 text-xs font-black text-gray-500 uppercase tracking-wider">الحالة</th>
+                <th className="text-right px-6 py-4 text-xs font-black text-gray-500 uppercase tracking-wider">الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {users.map((user) => (
+                <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+                        {user.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-900">{user.name}</p>
+                        <p className="text-xs text-gray-400">{user.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-1">
+                      {user.tenants.slice(0, 2).map((t) => (
+                        <span key={t.id} className="px-2 py-1 bg-gray-100 rounded-lg text-xs font-bold text-gray-600">
+                          {t.name.substring(0, 15)}{t.name.length > 15 ? '...' : ''}
+                        </span>
+                      ))}
+                      {user.tenants.length > 2 && (
+                        <span className="px-2 py-1 bg-gray-100 rounded-lg text-xs font-bold text-gray-400">
+                          +{user.tenants.length - 2}
+                        </span>
+                      )}
+                      {user.tenants.length === 0 && (
+                        <span className="text-gray-400 text-sm">-</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    {user.isSuperAdmin ? (
+                      <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold flex items-center gap-1 w-fit">
+                        <Shield size={12} /> Super Admin
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 text-sm">مستخدم عادي</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    {user.isActive ? (
+                      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">
+                        نشط
+                      </span>
+                    ) : (
+                      <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold">
+                        معطل
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowOptionsId(showOptionsId === user.id ? null : user.id)}
+                        className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+                      >
+                        <MoreVertical size={18} className="text-gray-400" />
+                      </button>
+                      {showOptionsId === user.id && (
+                        <div className="absolute left-0 mt-2 w-56 bg-white border border-gray-100 rounded-2xl shadow-xl z-20 overflow-hidden">
+                          {user.isActive ? (
+                            <button
+                              onClick={() => handleStatusChange(user.id, false)}
+                              className="w-full text-right px-4 py-3 text-sm font-bold text-orange-600 hover:bg-orange-50 flex items-center gap-2"
+                            >
+                              <XCircle size={16} /> تعطيل الحساب
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleStatusChange(user.id, true)}
+                              className="w-full text-right px-4 py-3 text-sm font-bold text-green-600 hover:bg-green-50 flex items-center gap-2"
+                            >
+                              <CheckCircle size={16} /> تفعيل الحساب
+                            </button>
+                          )}
+                          {user.isSuperAdmin ? (
+                            <button
+                              onClick={() => handleSuperAdminToggle(user.id, false)}
+                              className="w-full text-right px-4 py-3 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center gap-2"
+                            >
+                              <ShieldOff size={16} /> سحب صلاحيات Super Admin
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleSuperAdminToggle(user.id, true)}
+                              className="w-full text-right px-4 py-3 text-sm font-bold text-purple-600 hover:bg-purple-50 flex items-center gap-2"
+                            >
+                              <ShieldCheck size={16} /> منح صلاحيات Super Admin
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {users.length === 0 && (
+            <div className="text-center py-12 text-gray-400">
+              لا يوجد مستخدمين
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AdminUsers;

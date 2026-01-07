@@ -384,3 +384,85 @@ export async function getReportsCount(status?: string): Promise<{ count: number 
   const query = status ? `?status=${status}` : '';
   return apiRequest(`/reports/count${query}`);
 }
+
+// ==================== Admin API ====================
+
+export interface AdminDashboardStats {
+  tenants: { total: number; active: number; suspended: number };
+  users: { total: number; active: number };
+  leads: number;
+  jobs: number;
+}
+
+export interface AdminTenant {
+  id: string;
+  name: string;
+  slug: string;
+  status: 'ACTIVE' | 'SUSPENDED' | 'PENDING_VERIFICATION';
+  planId?: string;
+  createdAt: string;
+  owner?: { id: string; name: string; email: string };
+  stats: { users: number; leads: number; jobs: number };
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  isSuperAdmin: boolean;
+  isActive: boolean;
+  createdAt: string;
+  tenants: { id: string; name: string; role: string }[];
+}
+
+export async function getAdminDashboard(): Promise<AdminDashboardStats> {
+  return apiRequest('/admin/dashboard');
+}
+
+export async function getAdminTenants(options?: { status?: string; limit?: number; offset?: number }): Promise<{ tenants: AdminTenant[]; total: number }> {
+  const params = new URLSearchParams();
+  if (options?.status) params.append('status', options.status);
+  if (options?.limit) params.append('limit', options.limit.toString());
+  if (options?.offset) params.append('offset', options.offset.toString());
+  const query = params.toString();
+  return apiRequest(`/admin/tenants${query ? `?${query}` : ''}`);
+}
+
+export async function getAdminTenant(id: string): Promise<AdminTenant & { members: any[] }> {
+  return apiRequest(`/admin/tenants/${id}`);
+}
+
+export async function updateTenantStatus(id: string, status: 'ACTIVE' | 'SUSPENDED'): Promise<AdminTenant> {
+  return apiRequest(`/admin/tenants/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function deleteTenant(id: string): Promise<void> {
+  return apiRequest(`/admin/tenants/${id}`, { method: 'DELETE' });
+}
+
+export async function getAdminUsers(options?: { isActive?: boolean; isSuperAdmin?: boolean; limit?: number; offset?: number }): Promise<{ users: AdminUser[]; total: number }> {
+  const params = new URLSearchParams();
+  if (options?.isActive !== undefined) params.append('isActive', options.isActive.toString());
+  if (options?.isSuperAdmin !== undefined) params.append('isSuperAdmin', options.isSuperAdmin.toString());
+  if (options?.limit) params.append('limit', options.limit.toString());
+  if (options?.offset) params.append('offset', options.offset.toString());
+  const query = params.toString();
+  return apiRequest(`/admin/users${query ? `?${query}` : ''}`);
+}
+
+export async function updateUserStatus(id: string, isActive: boolean): Promise<AdminUser> {
+  return apiRequest(`/admin/users/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isActive }),
+  });
+}
+
+export async function toggleUserSuperAdmin(id: string, isSuperAdmin: boolean): Promise<AdminUser> {
+  return apiRequest(`/admin/users/${id}/super-admin`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isSuperAdmin }),
+  });
+}
