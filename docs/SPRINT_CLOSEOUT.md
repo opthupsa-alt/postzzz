@@ -300,6 +300,44 @@ Enums: Role (OWNER, ADMIN, MANAGER, SALES), JobStatus, InviteStatus
 | يناير 2026 | Sprint 1 | Backend Foundation (NestJS + Prisma + Auth + Jobs + Agent) | - |
 | يناير 2026 | Sprint 1 | Smoke Tests passed + Render config ready | - |
 | يناير 2026 | Sprint 1 | Swagger Basic Auth + Deploy configs finalized | - |
+| يناير 2026 | Sprint 1 | POST_DEPLOY_SMOKETEST.md created + Final deploy prep | - |
+
+---
+
+## 🔧 Manual Deploy Checklists
+
+### Render API Checklist
+
+1. [ ] Open https://render.com/dashboard
+2. [ ] New → Web Service → Connect `opthupsa-alt/leedz`
+3. [ ] **Root Directory:** `api`
+4. [ ] **Build Command:** `npm ci && npx prisma generate && npx prisma migrate deploy && npm run build`
+5. [ ] **Start Command:** `node dist/main.js`
+6. [ ] **Health Check Path:** `/health`
+7. [ ] Add Environment Variables:
+   - [ ] `NODE_ENV` = `production`
+   - [ ] `DATABASE_URL` = *(from Neon - Pooled)*
+   - [ ] `DATABASE_URL_UNPOOLED` = *(from Neon - Direct)*
+   - [ ] `JWT_SECRET` = *(generate 64+ chars)*
+   - [ ] `CORS_ORIGINS` = `https://leedz-web.vercel.app,http://localhost:5173`
+   - [ ] `SWAGGER_ENABLED` = `1`
+   - [ ] `SWAGGER_USER` = *(generate)*
+   - [ ] `SWAGGER_PASS` = *(generate)*
+8. [ ] Deploy
+9. [ ] Verify: `curl https://<render-url>/health`
+
+### Vercel Web Checklist
+
+1. [ ] Open https://vercel.com/new
+2. [ ] Import `opthupsa-alt/leedz`
+3. [ ] **Root Directory:** `web`
+4. [ ] **Framework:** Vite
+5. [ ] **Build Command:** `npm ci && npm run build`
+6. [ ] **Output Directory:** `dist`
+7. [ ] Add Environment Variable:
+   - [ ] `VITE_API_BASE_URL` = `https://<render-url>`
+8. [ ] Deploy
+9. [ ] Verify: Open site, check Network tab for API calls
 
 ---
 
