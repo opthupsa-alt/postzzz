@@ -1,5 +1,6 @@
 # Web Persistence Reality Report
-> Generated: 2026-01-07 22:15 UTC+3
+> Generated: 2026-01-07 22:30 UTC+3
+> Branch: `reality-audit-local-first`
 > Purpose: Explain why "data disappears after Super Refresh"
 
 ## Executive Summary

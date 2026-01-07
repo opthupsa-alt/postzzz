@@ -8,6 +8,7 @@ import { TenantsModule } from './tenants/tenants.module';
 import { UsersModule } from './users/users.module';
 import { InvitesModule } from './invites/invites.module';
 import { JobsModule } from './jobs/jobs.module';
+import { LeadsModule } from './leads/leads.module';
 import { AgentModule } from './agent/agent.module';
 import { AuditModule } from './audit/audit.module';
 
@@ -49,6 +50,7 @@ import { AuditModule } from './audit/audit.module';
     UsersModule,
     InvitesModule,
     JobsModule,
+    LeadsModule,
     AgentModule,
   ],
 })

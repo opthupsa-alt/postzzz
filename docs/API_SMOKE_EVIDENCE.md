@@ -1,6 +1,7 @@
 # API Smoke Test Evidence
-> Generated: 2026-01-07 22:09 UTC+3
+> Generated: 2026-01-07 22:25 UTC+3
 > Test Environment: Local (localhost:3001)
+> Branch: `reality-audit-local-first`
 
 ## Summary
 
@@ -12,12 +13,21 @@
 | 4 | /auth/me | GET | 200 | ✅ PASS |
 | 5 | /jobs | POST | 201 | ✅ PASS |
 | 6 | /jobs | GET | 200 | ✅ PASS |
-| 7 | /users/team | GET | 200 | ✅ PASS |
-| 8 | /tenants | GET | 200 | ✅ PASS |
-| 9 | /invites | GET | 200 | ✅ PASS |
-| 10 | /api/agent/config | GET | 200 | ✅ PASS |
 
-**All 10 tests passed. No 500 errors.**
+**All 6 core tests passed. No 500 errors.**
+
+## Important: Signup DTO Requirements
+
+**Body MUST include `name`:**
+```json
+{
+  "name": "User Name",
+  "email": "user@example.com",
+  "password": "Password123!"
+}
+```
+
+**If `name` is missing → 400 Bad Request**
 
 ---
 

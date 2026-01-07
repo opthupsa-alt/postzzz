@@ -18,6 +18,7 @@ model Tenant {
   auditLogs   AuditLog[]
   invites     Invite[]
   jobs        Job[]
+  leads       Lead[]
   memberships Membership[]
   users       User[]
 
@@ -36,6 +37,7 @@ model User {
   auditLogs       AuditLog[]
   invitesSent     Invite[]     @relation("InviteSender")
   jobs            Job[]
+  leads           Lead[]
   memberships     Membership[]
   defaultTenant   Tenant?      @relation(fields: [defaultTenantId], references: [id])
 
@@ -93,6 +95,7 @@ model Job {
   assignedAgentId String?
   evidence        Evidence[]
   jobLogs         JobLog[]
+  leads           Lead[]
   createdBy       User       @relation(fields: [createdById], references: [id])
   tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -190,4 +193,40 @@ enum JobStatus {
   COMPLETED
   FAILED
   CANCELLED
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+model Lead {
+  id           String     @id @default(uuid())
+  tenantId     String
+  companyName  String
+  industry     String?
+  city         String?
+  phone        String?
+  email        String?
+  website      String?
+  status       LeadStatus @default(NEW)
+  source       String?
+  notes        String?
+  jobId        String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  createdById  String
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy    User       @relation(fields: [createdById], references: [id])
+  job          Job?       @relation(fields: [jobId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("leads")
 }

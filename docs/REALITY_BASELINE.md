@@ -1,14 +1,25 @@
 # Reality Baseline
-> Generated: 2026-01-07 22:06 UTC+3
-> Auditor: Senior Software Architect + QA Lead + Reality Auditor
+> Generated: 2026-01-07 22:35 UTC+3
+> Branch: `reality-audit-local-first`
+> Auditor: Senior Full-Stack Engineer + QA Lead + Release Manager
 
 ## Git State
 
 | Item | Value |
 |------|-------|
-| **HEAD Commit** | `08c0c92749cbc8500ba45c4f73c4c20a7005e032` |
-| **Branch** | `main` |
-| **Working Tree** | Clean (no uncommitted changes) |
+| **HEAD Commit** | `de22b10` |
+| **Branch** | `reality-audit-local-first` |
+| **Base Branch** | `main` |
+| **Working Tree** | Clean |
+
+### Last 5 Commits
+```
+de22b10 docs: add comprehensive Local-First Reality Audit reports
+08c0c92 docs: add local-first reality reports with evidence
+2eb1168 docs: add comprehensive Backend Status Report
+c3acdfd feat: remove mock data and connect ProspectingPage to API
+2b580af feat: complete frontend-API integration
+```
 
 ## Versions
 
@@ -17,41 +28,58 @@
 | **Node.js** | v22.20.0 |
 | **npm** | 10.9.3 |
 
-## Running Processes
+## Running Services (Local)
 
-| PID | Port | Service | Started |
-|-----|------|---------|---------|
-| 22072 | 3000 | Frontend (Vite) | 2026-01-07 08:58:41 PM |
-| 96640 | 3001 | Backend (NestJS) | 2026-01-07 09:23:52 PM |
+| Service | PID | Port | URL | Status |
+|---------|-----|------|-----|--------|
+| Backend (NestJS) | 96640 | 3001 | http://localhost:3001 | ✅ Running |
+| Frontend (Vite) | 22072 | 3000 | http://localhost:3000 | ✅ Running |
+| Database | - | - | Neon (Online) | ✅ Connected |
 
-## Port Bindings
+## Environment Variables Required
 
-```
-TCP    0.0.0.0:3000    LISTENING    22072  (Frontend)
-TCP    0.0.0.0:3001    LISTENING    96640  (Backend)
-```
+### API (`api/.env` or `api/.env.local`)
+| Variable | Purpose | In Git? |
+|----------|---------|--------|
+| `DATABASE_URL` | Neon pooled connection | ❌ No |
+| `DATABASE_URL_UNPOOLED` | Neon direct connection | ❌ No |
+| `JWT_SECRET` | Token signing | ❌ No |
+| `PORT` | API port (default: 3001) | ❌ No |
+| `NODE_ENV` | Environment | ❌ No |
 
-## Tracked Files Check (Secrets)
+### Web (`web/.env.local`)
+| Variable | Purpose | In Git? |
+|----------|---------|--------|
+| `VITE_API_BASE_URL` | API endpoint | ❌ No |
 
-**Searched for:** `.env`, `ops/local`, `dist`, `node_modules`
+## Environment Files Status
 
-**Found in Git:**
-```
-.env.example                              ✅ Safe (example only)
-api/.env.example                          ✅ Safe (example only)
-leedz_extension chrome/backend/.env.example  ✅ Safe (example only)
-web/.env.example                          ✅ Safe (example only)
-```
+| File | Exists | In .gitignore |
+|------|--------|---------------|
+| `api/.env` | ✅ Yes | ✅ Yes |
+| `api/.env.local` | ❌ No | ✅ Yes |
+| `web/.env.local` | ✅ Yes | ✅ Yes |
+| `.gitignore` covers `.env` | ✅ Yes | - |
+| `.gitignore` covers `.env.local` | ✅ Yes | - |
 
-**NOT Found (Good):**
-- No `.env` files tracked
-- No `node_modules` tracked
-- No `dist` folders tracked
-- No `ops/local` tracked
+## What Works / What Doesn't / Uncertain
+
+| Component | Status | Evidence |
+|-----------|--------|----------|
+| API Health | ✅ Works | `GET /health` → 200 |
+| Auth Signup | ✅ Works | `POST /auth/signup` → 201 |
+| Auth Login | ✅ Works | `POST /auth/login` → 200 |
+| Auth Me | ✅ Works | `GET /auth/me` → 200 |
+| Jobs CRUD | ✅ Works | `POST/GET /jobs` → 201/200 |
+| **Leads CRUD** | ❌ Broken | No Lead model in schema |
+| **Lists CRUD** | ❌ Broken | No List model in schema |
+| Token Persistence | ✅ Works | localStorage `leedz_token` |
+| Lead Persistence | ❌ Broken | Zustand only, no DB |
 
 ## Conclusion
 
-- **Baseline is clean**
+- **Branch created:** `reality-audit-local-first`
+- **Baseline captured**
 - **No secrets in Git**
 - **Both servers running locally**
-- **Ready for Phase 1**
+- **P0 Bug identified:** Leads don't persist (no Lead model)

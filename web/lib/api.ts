@@ -174,3 +174,78 @@ export async function cancelJob(id: string): Promise<Job> {
 export async function healthCheck(): Promise<{ ok: boolean; version: string }> {
   return apiRequest('/health');
 }
+
+// Leads API
+export interface Lead {
+  id: string;
+  companyName: string;
+  industry?: string;
+  city?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  status: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST';
+  source?: string;
+  notes?: string;
+  jobId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateLeadDto {
+  companyName: string;
+  industry?: string;
+  city?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  status?: Lead['status'];
+  source?: string;
+  notes?: string;
+  jobId?: string;
+}
+
+export async function getLeads(options?: { status?: string; limit?: number; offset?: number }): Promise<Lead[]> {
+  const params = new URLSearchParams();
+  if (options?.status) params.append('status', options.status);
+  if (options?.limit) params.append('limit', options.limit.toString());
+  if (options?.offset) params.append('offset', options.offset.toString());
+  const query = params.toString();
+  return apiRequest(`/leads${query ? `?${query}` : ''}`);
+}
+
+export async function getLead(id: string): Promise<Lead> {
+  return apiRequest(`/leads/${id}`);
+}
+
+export async function createLead(data: CreateLeadDto): Promise<Lead> {
+  return apiRequest('/leads', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function bulkCreateLeads(leads: CreateLeadDto[]): Promise<{ count: number }> {
+  return apiRequest('/leads/bulk', {
+    method: 'POST',
+    body: JSON.stringify(leads),
+  });
+}
+
+export async function updateLead(id: string, data: Partial<CreateLeadDto>): Promise<Lead> {
+  return apiRequest(`/leads/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteLead(id: string): Promise<Lead> {
+  return apiRequest(`/leads/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getLeadsCount(status?: string): Promise<{ count: number }> {
+  const query = status ? `?status=${status}` : '';
+  return apiRequest(`/leads/count${query}`);
+}

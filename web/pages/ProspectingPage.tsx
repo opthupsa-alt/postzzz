@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, MapPin, Filter, Database, Phone, Globe, ChevronLeft, Check, Plus, ListPlus, X, LayoutGrid, List, History, Zap, Sparkles } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { JobStatus, Lead } from '../types';
@@ -8,7 +8,7 @@ import SmartFilters from '../components/SmartFilters';
 import BulkActionsBar from '../components/BulkActionsBar';
 import LeadGridCard from '../components/LeadGridCard';
 import { showToast } from '../components/NotificationToast';
-import { createJob } from '../lib/api';
+import { createJob, getLeads, bulkCreateLeads, CreateLeadDto } from '../lib/api';
 
 const ProspectingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -24,6 +24,32 @@ const ProspectingPage: React.FC = () => {
     { query: 'مطاعم الرياض', date: 'منذ ساعتين', results: 15 },
     { query: 'مقاولات جدة', date: 'أمس', results: 42 }
   ]);
+
+  // Load leads from API on mount
+  useEffect(() => {
+    const loadLeads = async () => {
+      try {
+        const apiLeads = await getLeads({ limit: 100 });
+        // Convert API leads to frontend Lead type
+        const frontendLeads = apiLeads.map(l => ({
+          id: l.id,
+          companyName: l.companyName,
+          industry: l.industry || '',
+          city: l.city || '',
+          phone: l.phone,
+          website: l.website,
+          status: 'NEW' as const,
+          evidenceCount: 0,
+          hasReport: false,
+          tags: l.industry ? [l.industry] : [],
+        })) as Lead[];
+        setLeads(frontendLeads);
+      } catch (err) {
+        console.error('Failed to load leads:', err);
+      }
+    };
+    loadLeads();
+  }, [setLeads]);
 
   const filteredResults = useMemo(() => {
     return leads.filter(lead => {
@@ -59,29 +85,52 @@ const ProspectingPage: React.FC = () => {
 
       // Simulate progress (in real app, this would poll the API or use WebSocket)
       let progress = 0;
-      const interval = setInterval(() => {
+      const interval = setInterval(async () => {
         progress += Math.floor(Math.random() * 25);
         if (progress >= 100) {
           progress = 100;
           clearInterval(interval);
           
-          // Mock leads for demo (in real app, these would come from the job result)
-          const mockLeads: Lead[] = [
-            { id: `${jobId}-1`, companyName: 'مؤسسة الحلول الذكية', industry: keyword, city: city, phone: '0501234567', website: 'https://smart.sa', status: 'NEW', evidenceCount: 0, hasReport: false, tags: [keyword] },
-            { id: `${jobId}-2`, companyName: 'مطعم مذاق الشرق', industry: keyword, city: city, phone: '0502234568', website: 'https://taste.sa', status: 'NEW', evidenceCount: 0, hasReport: false, tags: [keyword] },
-            { id: `${jobId}-3`, companyName: 'المركز الطبي المتقدم', industry: keyword, city: city, status: 'NEW', evidenceCount: 0, hasReport: false, tags: [keyword] },
-            { id: `${jobId}-4`, companyName: 'مكتب المهندس خالد', industry: keyword, city: city, phone: '0504434570', status: 'NEW', evidenceCount: 0, hasReport: false, tags: [keyword] },
-            { id: `${jobId}-5`, companyName: 'شركة نماء العقارية', industry: keyword, city: city, phone: '0505534571', website: 'https://namaa.sa', status: 'NEW', evidenceCount: 0, hasReport: false, tags: [keyword] },
+          // Demo leads to save to DB (in production, these would come from the Runner/Extension)
+          const leadsToSave: CreateLeadDto[] = [
+            { companyName: 'مؤسسة الحلول الذكية', industry: keyword, city: city, phone: '0501234567', website: 'https://smart.sa', source: 'PROSPECT_SEARCH', jobId: jobId },
+            { companyName: 'مطعم مذاق الشرق', industry: keyword, city: city, phone: '0502234568', website: 'https://taste.sa', source: 'PROSPECT_SEARCH', jobId: jobId },
+            { companyName: 'المركز الطبي المتقدم', industry: keyword, city: city, source: 'PROSPECT_SEARCH', jobId: jobId },
+            { companyName: 'مكتب المهندس خالد', industry: keyword, city: city, phone: '0504434570', source: 'PROSPECT_SEARCH', jobId: jobId },
+            { companyName: 'شركة نماء العقارية', industry: keyword, city: city, phone: '0505534571', website: 'https://namaa.sa', source: 'PROSPECT_SEARCH', jobId: jobId },
           ];
           
-          setLeads(mockLeads);
-          updateJob(jobId, { 
-            status: JobStatus.SUCCESS, 
-            progress: 100, 
-            message: `اكتمل البحث: تم العثور على ${mockLeads.length} عملاء`
-          });
-          showToast('SUCCESS', 'اكتمل البحث', `تم العثور على ${mockLeads.length} عملاء جدد تطابق معاييرك.`);
-          setSearchHistory([{ query: `${keyword} - ${city}`, date: 'الآن', results: mockLeads.length }, ...searchHistory]);
+          try {
+            // Save leads to DB via API
+            await bulkCreateLeads(leadsToSave);
+            
+            // Reload leads from API to get the saved ones with IDs
+            const apiLeads = await getLeads({ limit: 100 });
+            const frontendLeads = apiLeads.map(l => ({
+              id: l.id,
+              companyName: l.companyName,
+              industry: l.industry || '',
+              city: l.city || '',
+              phone: l.phone,
+              website: l.website,
+              status: 'NEW' as const,
+              evidenceCount: 0,
+              hasReport: false,
+              tags: l.industry ? [l.industry] : [],
+            })) as Lead[];
+            setLeads(frontendLeads);
+            
+            updateJob(jobId, { 
+              status: JobStatus.SUCCESS, 
+              progress: 100, 
+              message: `اكتمل البحث: تم العثور على ${leadsToSave.length} عملاء`
+            });
+            showToast('SUCCESS', 'اكتمل البحث', `تم العثور على ${leadsToSave.length} عملاء جدد وحفظهم في قاعدة البيانات.`);
+            setSearchHistory([{ query: `${keyword} - ${city}`, date: 'الآن', results: leadsToSave.length }, ...searchHistory]);
+          } catch (saveErr) {
+            console.error('Failed to save leads:', saveErr);
+            showToast('ERROR', 'فشل الحفظ', 'تم العثور على العملاء لكن فشل حفظهم');
+          }
           setIsSearching(false);
         } else {
           const messages = ['تحميل البيانات من الخرائط...', 'استخراج العناوين والنشاط...', 'فلترة النتائج المكررة...', 'تحليل جودة البيانات...'];
