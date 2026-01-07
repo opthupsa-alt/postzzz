@@ -1,0 +1,23 @@
+{
+  "name": "leedz-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Leedz SaaS Multi-tenant Lead Generation Platform",
+  "scripts": {
+    "dev:web": "cd web && npm run dev",
+    "dev:api": "cd api && npm run dev",
+    "build:web": "cd web && npm run build",
+    "build:api": "cd api && npm run build",
+    "start:api": "cd api && npm run start:prod",
+    "db:generate": "cd api && npm run db:generate",
+    "db:migrate": "cd api && npm run db:migrate",
+    "db:migrate:dev": "cd api && npm run db:migrate:dev",
+    "db:seed": "cd api && npm run db:seed",
+    "db:studio": "cd api && npm run db:studio",
+    "lint:api": "cd api && npm run lint",
+    "test:api": "cd api && npm run test"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

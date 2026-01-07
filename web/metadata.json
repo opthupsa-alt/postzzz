@@ -1,0 +1,10 @@
+
+{
+  "name": "Leadz (ليدززز)",
+  "description": "A high-end prospecting and sales automation platform for sales representatives, featuring job-based processing, evidence-backed reports, and WhatsApp integration.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

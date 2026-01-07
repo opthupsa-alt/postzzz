@@ -1,0 +1,2163 @@
+openapi: 3.1.0
+info:
+  title: Leedz API
+  description: |
+    API for Leedz - Sales Intelligence & CRM Platform
+    
+    ## Authentication
+    All endpoints (except public ones) require a Bearer token in the Authorization header.
+    
+    ## Tenant Context
+    The current tenant is determined from the JWT token. Use `/api/auth/switch-tenant` to change tenants.
+    
+    ## Rate Limiting
+    - Default: 100 requests/minute
+    - Search: 10 requests/minute
+    - WhatsApp: 100 requests/hour
+  version: 2.0.0
+  contact:
+    name: Leedz Team
+    email: dev@leadz.sa
+
+servers:
+  - url: https://api.leadz.sa
+    description: Production
+  - url: https://api.staging.leadz.sa
+    description: Staging
+  - url: http://localhost:3000
+    description: Development
+
+tags:
+  - name: Auth
+    description: Authentication & Authorization
+  - name: Leads
+    description: Lead Management
+  - name: Lists
+    description: List Management
+  - name: Jobs
+    description: Background Jobs
+  - name: Search
+    description: Prospecting & Search
+  - name: WhatsApp
+    description: WhatsApp Messaging
+  - name: Team
+    description: Team Management
+  - name: Integrations
+    description: External Integrations
+  - name: Billing
+    description: Subscription & Billing
+  - name: Audit
+    description: Audit Logs
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    # ==================== Common ====================
+    Error:
+      type: object
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Invalid input data
+            details:
+              type: object
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 150
+        totalPages:
+          type: integer
+          example: 8
+
+    # ==================== Auth ====================
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        emailVerified:
+          type: boolean
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        logoUrl:
+          type: string
+          nullable: true
+        role:
+          $ref: '#/components/schemas/UserRole'
+
+    UserRole:
+      type: string
+      enum: [OWNER, ADMIN, MANAGER, SALES]
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            tenant:
+              $ref: '#/components/schemas/Tenant'
+            token:
+              type: string
+            expiresIn:
+              type: integer
+
+    SignupRequest:
+      type: object
+      required:
+        - organizationName
+        - name
+        - email
+        - password
+      properties:
+        organizationName:
+          type: string
+          minLength: 2
+          maxLength: 100
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        phone:
+          type: string
+          nullable: true
+
+    # ==================== Invite ====================
+    Invite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, EXPIRED, CANCELLED]
+        message:
+          type: string
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    # ==================== Leads ====================
+    LeadStatus:
+      type: string
+      enum: [NEW, PROSPECTED, CONTACTED, QUALIFIED, LOST]
+
+    Lead:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyName:
+          type: string
+        industry:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        website:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/LeadStatus'
+        score:
+          type: integer
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        listId:
+          type: string
+          format: uuid
+          nullable: true
+        assignedTo:
+          type: string
+          format: uuid
+          nullable: true
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateLeadRequest:
+      type: object
+      required:
+        - companyName
+      properties:
+        companyName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        industry:
+          type: string
+          maxLength: 100
+        city:
+          type: string
+          maxLength: 100
+        phone:
+          type: string
+          maxLength: 50
+        email:
+          type: string
+          format: email
+        website:
+          type: string
+          format: uri
+        listId:
+          type: string
+          format: uuid
+        tags:
+          type: array
+          items:
+            type: string
+
+    UpdateLeadRequest:
+      type: object
+      properties:
+        companyName:
+          type: string
+        industry:
+          type: string
+        city:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        website:
+          type: string
+        status:
+          $ref: '#/components/schemas/LeadStatus'
+        tags:
+          type: array
+          items:
+            type: string
+        listId:
+          type: string
+          format: uuid
+          nullable: true
+        assignedTo:
+          type: string
+          format: uuid
+          nullable: true
+
+    # ==================== Lists ====================
+    List:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+        leadsCount:
+          type: integer
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ==================== Jobs ====================
+    JobType:
+      type: string
+      enum: [SEARCH, SURVEY, WHATSAPP, WHATSAPP_BULK, IMPORT, EXPORT, REVEAL, REPORT, SYNC]
+
+    JobStatus:
+      type: string
+      enum: [PENDING, RUNNING, SUCCESS, FAILED, CANCELLED]
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/JobType'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        message:
+          type: string
+          nullable: true
+        entityType:
+          type: string
+          nullable: true
+        entityId:
+          type: string
+          format: uuid
+          nullable: true
+        result:
+          type: object
+          nullable: true
+        error:
+          type: object
+          nullable: true
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        createdBy:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    # ==================== Evidence & Reports ====================
+    EvidenceType:
+      type: string
+      enum: [WEBSITE, SOCIAL, NEWS, REVIEWS, GOVERNMENT, FINANCIAL, CUSTOM]
+
+    Evidence:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        leadId:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/EvidenceType'
+        title:
+          type: string
+        source:
+          type: string
+          nullable: true
+        url:
+          type: string
+          nullable: true
+        snippet:
+          type: string
+          nullable: true
+        confidence:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+        createdAt:
+          type: string
+          format: date-time
+
+    ReportSection:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        confidence:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+        evidenceIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    Report:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        leadId:
+          type: string
+          format: uuid
+        summary:
+          type: string
+          nullable: true
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportSection'
+        score:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ==================== WhatsApp ====================
+    WhatsAppMessage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        leadId:
+          type: string
+          format: uuid
+          nullable: true
+        phone:
+          type: string
+        message:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, SENT, DELIVERED, READ, FAILED]
+        sentBy:
+          type: string
+          format: uuid
+        sentAt:
+          type: string
+          format: date-time
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    WhatsAppTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        content:
+          type: string
+        variables:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    SendWhatsAppRequest:
+      type: object
+      required:
+        - phone
+        - message
+      properties:
+        leadId:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        message:
+          type: string
+        templateId:
+          type: string
+          format: uuid
+      headers:
+        X-Idempotency-Key:
+          type: string
+          description: Unique key to prevent duplicate sends
+
+    # ==================== Team ====================
+    TeamMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED]
+        avatarUrl:
+          type: string
+          nullable: true
+        joinedAt:
+          type: string
+          format: date-time
+
+    InviteRequest:
+      type: object
+      required:
+        - email
+        - role
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [ADMIN, MANAGER, SALES]
+
+    # ==================== Billing ====================
+    Plan:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        nameAr:
+          type: string
+        priceMonthly:
+          type: integer
+        priceYearly:
+          type: integer
+        seatsLimit:
+          type: integer
+        leadsLimit:
+          type: integer
+        searchesLimit:
+          type: integer
+        messagesLimit:
+          type: integer
+        features:
+          type: array
+          items:
+            type: string
+
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        planId:
+          type: string
+        status:
+          type: string
+          enum: [TRIALING, ACTIVE, PAST_DUE, CANCELLED, UNPAID]
+        billingCycle:
+          type: string
+          enum: [MONTHLY, YEARLY]
+        currentPeriodStart:
+          type: string
+          format: date-time
+        currentPeriodEnd:
+          type: string
+          format: date-time
+
+    Usage:
+      type: object
+      properties:
+        seats:
+          type: object
+          properties:
+            used:
+              type: integer
+            limit:
+              type: integer
+        leads:
+          type: object
+          properties:
+            used:
+              type: integer
+            limit:
+              type: integer
+        searches:
+          type: object
+          properties:
+            used:
+              type: integer
+            limit:
+              type: integer
+        messages:
+          type: object
+          properties:
+            used:
+              type: integer
+            limit:
+              type: integer
+
+    # ==================== Evidence (Agent) ====================
+    EvidenceItem:
+      type: object
+      required:
+        - type
+        - title
+        - source
+        - snippet
+        - confidence
+        - hash
+        - collectedAt
+        - sizeBytes
+      properties:
+        type:
+          type: string
+          enum:
+            - GOOGLE_MAPS_LISTING
+            - WEBSITE_CONTENT
+            - SOCIAL_PROFILE
+            - SEARCH_RESULT
+            - CONTACT_INFO
+            - REVIEW
+            - NEWS_ARTICLE
+        title:
+          type: string
+          maxLength: 255
+        source:
+          type: string
+          description: Connector that collected this evidence
+        url:
+          type: string
+          format: uri
+        snippet:
+          type: string
+          maxLength: 10000
+          description: Text-only content, sanitized
+        confidence:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+        rawData:
+          type: object
+          description: Structured data if available, max 50KB
+        hash:
+          type: string
+          description: SHA-256 of snippet for deduplication
+        collectedAt:
+          type: string
+          format: date-time
+        sizeBytes:
+          type: integer
+          description: For quota tracking
+        pageLoadTimeMs:
+          type: integer
+          description: For debugging
+
+    # ==================== Audit ====================
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+        entityType:
+          type: string
+          nullable: true
+        entityId:
+          type: string
+          format: uuid
+          nullable: true
+        action:
+          type: string
+        details:
+          type: object
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+        userName:
+          type: string
+          nullable: true
+        ipAddress:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+paths:
+  # ==================== Auth ====================
+  /api/auth/signup:
+    post:
+      tags: [Auth]
+      summary: Create new organization and owner account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: Organization created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login to existing account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout and invalidate tokens
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Logout successful
+
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  expiresIn:
+                    type: integer
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user and tenant info
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      tenant:
+                        $ref: '#/components/schemas/Tenant'
+                      tenants:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Tenant'
+
+  /api/auth/switch-tenant:
+    post:
+      tags: [Auth]
+      summary: Switch to a different tenant
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tenantId
+              properties:
+                tenantId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Tenant switched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  tenant:
+                    $ref: '#/components/schemas/Tenant'
+
+  # ==================== Leads ====================
+  /api/leads:
+    get:
+      tags: [Leads]
+      summary: List leads with pagination and filters
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/LeadStatus'
+        - name: listId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: hasPhone
+          in: query
+          schema:
+            type: boolean
+        - name: hasWebsite
+          in: query
+          schema:
+            type: boolean
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, companyName, status]
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        '200':
+          description: List of leads
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      leads:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Lead'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags: [Leads]
+      summary: Create a new lead
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLeadRequest'
+      responses:
+        '201':
+          description: Lead created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      lead:
+                        $ref: '#/components/schemas/Lead'
+
+  /api/leads/{id}:
+    get:
+      tags: [Leads]
+      summary: Get lead details
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lead details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      lead:
+                        $ref: '#/components/schemas/Lead'
+                      evidence:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Evidence'
+                      report:
+                        $ref: '#/components/schemas/Report'
+
+    patch:
+      tags: [Leads]
+      summary: Update a lead
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLeadRequest'
+      responses:
+        '200':
+          description: Lead updated
+
+    delete:
+      tags: [Leads]
+      summary: Delete a lead
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Lead deleted
+
+  /api/leads/{id}/survey:
+    post:
+      tags: [Leads]
+      summary: Start survey job for a lead
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Survey job started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      jobId:
+                        type: string
+                        format: uuid
+
+  # ==================== Search ====================
+  /api/search:
+    post:
+      tags: [Search]
+      summary: Start a search job
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - keyword
+                - city
+              properties:
+                keyword:
+                  type: string
+                  minLength: 2
+                city:
+                  type: string
+                  minLength: 2
+                filters:
+                  type: object
+                  properties:
+                    hasPhone:
+                      type: boolean
+                    hasWebsite:
+                      type: boolean
+      responses:
+        '202':
+          description: Search job started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      jobId:
+                        type: string
+                        format: uuid
+
+  /api/search/{jobId}/results:
+    get:
+      tags: [Search]
+      summary: Get search results
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      job:
+                        $ref: '#/components/schemas/Job'
+                      results:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Lead'
+                      totalResults:
+                        type: integer
+
+  # ==================== Jobs ====================
+  /api/jobs:
+    get:
+      tags: [Jobs]
+      summary: List jobs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/JobStatus'
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/JobType'
+      responses:
+        '200':
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      jobs:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Job'
+
+  /api/jobs/{id}:
+    get:
+      tags: [Jobs]
+      summary: Get job details
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      job:
+                        $ref: '#/components/schemas/Job'
+
+  # ==================== WhatsApp ====================
+  /api/whatsapp/send:
+    post:
+      tags: [WhatsApp]
+      summary: Send WhatsApp message
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendWhatsAppRequest'
+      responses:
+        '202':
+          description: Message queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      jobId:
+                        type: string
+                        format: uuid
+                      messageId:
+                        type: string
+                        format: uuid
+
+  /api/whatsapp/messages:
+    get:
+      tags: [WhatsApp]
+      summary: List sent messages
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, SENT, DELIVERED, READ, FAILED]
+      responses:
+        '200':
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      messages:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WhatsAppMessage'
+                      stats:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+                          delivered:
+                            type: integer
+                          failed:
+                            type: integer
+
+  /api/whatsapp/templates:
+    get:
+      tags: [WhatsApp]
+      summary: List message templates
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      templates:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WhatsAppTemplate'
+
+    post:
+      tags: [WhatsApp]
+      summary: Create message template
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - content
+              properties:
+                name:
+                  type: string
+                content:
+                  type: string
+      responses:
+        '201':
+          description: Template created
+
+  # ==================== Team ====================
+  /api/team:
+    get:
+      tags: [Team]
+      summary: List team members
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of team members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      members:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TeamMember'
+
+  /api/team/invite:
+    post:
+      tags: [Team]
+      summary: Invite new team member
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteRequest'
+      responses:
+        '201':
+          description: Invite sent
+
+  /api/team/{id}/role:
+    patch:
+      tags: [Team]
+      summary: Change member role
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - role
+              properties:
+                role:
+                  $ref: '#/components/schemas/UserRole'
+      responses:
+        '200':
+          description: Role updated
+
+  /api/team/{id}:
+    delete:
+      tags: [Team]
+      summary: Remove team member
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Member removed
+
+  # ==================== Billing ====================
+  /api/billing/plans:
+    get:
+      tags: [Billing]
+      summary: List available plans
+      responses:
+        '200':
+          description: List of plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      plans:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Plan'
+
+  /api/billing/subscription:
+    get:
+      tags: [Billing]
+      summary: Get current subscription
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      subscription:
+                        $ref: '#/components/schemas/Subscription'
+                      plan:
+                        $ref: '#/components/schemas/Plan'
+
+  /api/billing/usage:
+    get:
+      tags: [Billing]
+      summary: Get current usage
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Usage details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Usage'
+
+  /api/billing/checkout:
+    post:
+      tags: [Billing]
+      summary: Create checkout session
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - planId
+              properties:
+                planId:
+                  type: string
+                billingCycle:
+                  type: string
+                  enum: [MONTHLY, YEARLY]
+      responses:
+        '200':
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      checkoutUrl:
+                        type: string
+                        format: uri
+
+  # ==================== Audit ====================
+  # ==================== Tenants (CF-11 fix) ====================
+  /api/tenants:
+    get:
+      tags: [Tenants]
+      summary: List user's tenants
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of tenants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      tenants:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Tenant'
+    post:
+      tags: [Tenants]
+      summary: Create new tenant
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+      responses:
+        '201':
+          description: Tenant created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      tenant:
+                        $ref: '#/components/schemas/Tenant'
+                      membership:
+                        type: object
+                        properties:
+                          role:
+                            $ref: '#/components/schemas/UserRole'
+
+  /api/tenants/{id}:
+    patch:
+      tags: [Tenants]
+      summary: Update tenant
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                logoUrl:
+                  type: string
+      responses:
+        '200':
+          description: Tenant updated
+
+  # ==================== Invites (CF-11 fix) ====================
+  /api/invites:
+    get:
+      tags: [Team]
+      summary: List pending invites
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of invites
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      invites:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Invite'
+    post:
+      tags: [Team]
+      summary: Create invite
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - role
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  $ref: '#/components/schemas/UserRole'
+                message:
+                  type: string
+      responses:
+        '201':
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      invite:
+                        $ref: '#/components/schemas/Invite'
+
+  /api/invites/{token}/accept:
+    post:
+      tags: [Team]
+      summary: Accept invite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - password
+              properties:
+                name:
+                  type: string
+                password:
+                  type: string
+                  minLength: 8
+      responses:
+        '201':
+          description: Invite accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      tenant:
+                        $ref: '#/components/schemas/Tenant'
+                      token:
+                        type: string
+
+  /api/invites/{id}:
+    delete:
+      tags: [Team]
+      summary: Cancel invite
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Invite cancelled
+
+  /api/invites/{id}/resend:
+    post:
+      tags: [Team]
+      summary: Resend invite
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invite resent
+
+  # ==================== Auth Switch Tenant (CF-11 fix) ====================
+  /api/auth/switch-tenant:
+    post:
+      tags: [Auth]
+      summary: Switch to another tenant
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tenantId
+              properties:
+                tenantId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Tenant switched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      tenant:
+                        $ref: '#/components/schemas/Tenant'
+                      token:
+                        type: string
+                      refreshToken:
+                        type: string
+
+  # ==================== Agent/Runner API ====================
+  /api/agent/config:
+    get:
+      tags: [Agent]
+      summary: Get agent configuration (allowlist, feature flags, connector settings)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Agent configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      allowlist:
+                        type: array
+                        items:
+                          type: string
+                        description: Allowed domains for execution
+                      featureFlags:
+                        type: object
+                        additionalProperties:
+                          type: boolean
+                      connectorSettings:
+                        type: object
+                        additionalProperties:
+                          type: object
+
+  /api/agent/heartbeat:
+    post:
+      tags: [Agent]
+      summary: Agent heartbeat to maintain connection
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                extensionVersion:
+                  type: string
+                activeJobs:
+                  type: array
+                  items:
+                    type: string
+                status:
+                  type: string
+                  enum: [IDLE, BUSY, PAUSED]
+      responses:
+        '200':
+          description: Heartbeat acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      pendingJobs:
+                        type: integer
+                      serverTime:
+                        type: string
+                        format: date-time
+
+  /api/agent/jobs/{jobId}/ack:
+    post:
+      tags: [Agent]
+      summary: Acknowledge job receipt
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accepted:
+                  type: boolean
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Acknowledgment received
+
+  /api/agent/jobs/{jobId}/progress:
+    post:
+      tags: [Agent]
+      summary: Report job progress
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stepId:
+                  type: integer
+                progress:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                message:
+                  type: string
+      responses:
+        '200':
+          description: Progress recorded
+
+  /api/agent/jobs/{jobId}/evidence:
+    post:
+      tags: [Agent]
+      summary: Submit evidence batch
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stepId:
+                  type: integer
+                evidence:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/EvidenceItem'
+      responses:
+        '200':
+          description: Evidence stored
+        '413':
+          description: Evidence too large
+
+  /api/agent/jobs/{jobId}/error:
+    post:
+      tags: [Agent]
+      summary: Report job error
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stepId:
+                  type: integer
+                code:
+                  type: string
+                  enum:
+                    - LOGIN_REQUIRED_UNSUPPORTED
+                    - RATE_LIMITED
+                    - BLOCKED
+                    - CAPTCHA_REQUIRED
+                    - NOT_FOUND
+                    - PROFILE_PRIVATE
+                    - TIMEOUT
+                    - NETWORK_ERROR
+                    - PARSE_ERROR
+                    - CONSENT_REQUIRED
+                    - QUOTA_EXCEEDED
+                message:
+                  type: string
+                recoverable:
+                  type: boolean
+      responses:
+        '200':
+          description: Error recorded
+
+  /api/agent/jobs/{jobId}/done:
+    post:
+      tags: [Agent]
+      summary: Mark job as complete
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [SUCCESS, FAILED, PARTIAL_SUCCESS, CANCELLED]
+                summary:
+                  type: object
+                  properties:
+                    stepsCompleted:
+                      type: integer
+                    stepsTotal:
+                      type: integer
+                    evidenceCount:
+                      type: integer
+                    duration:
+                      type: integer
+                      description: Duration in milliseconds
+                error:
+                  type: object
+                  properties:
+                    code:
+                      type: string
+                    message:
+                      type: string
+                    stepId:
+                      type: integer
+      responses:
+        '200':
+          description: Job marked complete
+
+  # ==================== Audit ====================
+  /api/audit-logs:
+    get:
+      tags: [Audit]
+      summary: List audit logs
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: eventType
+          in: query
+          schema:
+            type: string
+        - name: userId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: List of audit logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      logs:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AuditLog'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
