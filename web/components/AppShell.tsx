@@ -10,6 +10,7 @@ import {
 import JobProgressWidget from './JobProgressWidget';
 import NotificationToast from './NotificationToast';
 import { useStore } from '../store/useStore';
+import { logout, getStoredUser } from '../lib/api';
 
 const SidebarLink = ({ to, icon: Icon, label, active, onClick }: { to: string, icon: any, label: string, active: boolean, onClick?: () => void }) => (
   <Link 
@@ -148,10 +149,13 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 <Activity size={14} className="text-gray-300" />
              </div>
             <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/settings" icon={Settings} label="الإعدادات" active={location.pathname === '/app/settings'} />
-            <Link to="/login" className="flex items-center gap-3 px-4 py-3 w-full text-red-500 hover:bg-red-50 rounded-xl transition-colors font-bold text-sm">
+            <button 
+              onClick={() => { logout(); }}
+              className="flex items-center gap-3 px-4 py-3 w-full text-red-500 hover:bg-red-50 rounded-xl transition-colors font-bold text-sm"
+            >
               <LogOut size={20} />
               <span>تسجيل الخروج</span>
-            </Link>
+            </button>
           </div>
         </div>
       </aside>

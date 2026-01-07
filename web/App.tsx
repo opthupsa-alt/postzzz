@@ -2,6 +2,7 @@
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import AppShell from './components/AppShell';
+import ProtectedRoute from './components/ProtectedRoute';
 import ProspectingPage from './pages/ProspectingPage';
 import LeadDetailPage from './pages/LeadDetailPage';
 import CompanyDetailPage from './pages/CompanyDetailPage';
@@ -31,24 +32,26 @@ const App = () => {
         <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
         
         <Route path="/app/*" element={
-          <AppShell>
-            <Routes>
-              <Route path="dashboard" element={<DashboardPage />} />
-              <Route path="prospecting" element={<ProspectingPage />} />
-              <Route path="leads" element={<LeadsManagementPage />} />
-              <Route path="leads/new" element={<NewLeadPage />} />
-              <Route path="leads/import" element={<LeadImportPage />} />
-              <Route path="leads/:id" element={<LeadDetailPage />} />
-              <Route path="companies/:id" element={<CompanyDetailPage />} />
-              <Route path="lists" element={<ListsPage />} />
-              <Route path="lists/:id" element={<ListDetailPage />} />
-              <Route path="whatsapp" element={<WhatsAppMessagesPage />} />
-              <Route path="team" element={<TeamPage />} />
-              <Route path="integrations" element={<IntegrationsPage />} />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route path="audit-logs" element={<AuditLogsPage />} />
-            </Routes>
-          </AppShell>
+          <ProtectedRoute>
+            <AppShell>
+              <Routes>
+                <Route path="dashboard" element={<DashboardPage />} />
+                <Route path="prospecting" element={<ProspectingPage />} />
+                <Route path="leads" element={<LeadsManagementPage />} />
+                <Route path="leads/new" element={<NewLeadPage />} />
+                <Route path="leads/import" element={<LeadImportPage />} />
+                <Route path="leads/:id" element={<LeadDetailPage />} />
+                <Route path="companies/:id" element={<CompanyDetailPage />} />
+                <Route path="lists" element={<ListsPage />} />
+                <Route path="lists/:id" element={<ListDetailPage />} />
+                <Route path="whatsapp" element={<WhatsAppMessagesPage />} />
+                <Route path="team" element={<TeamPage />} />
+                <Route path="integrations" element={<IntegrationsPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+                <Route path="audit-logs" element={<AuditLogsPage />} />
+              </Routes>
+            </AppShell>
+          </ProtectedRoute>
         } />
       </Routes>
     </Router>

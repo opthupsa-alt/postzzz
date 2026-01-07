@@ -1,22 +1,34 @@
 
 import React, { useState } from 'react';
-import { Zap, Mail, Lock, ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
+import { Zap, Mail, Lock, ArrowLeft, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { login, ApiError } from '../lib/api';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate auth
-    setTimeout(() => {
-      setIsLoading(false);
+    setError('');
+
+    try {
+      await login(email, password);
       navigate('/app/dashboard');
-    }, 1500);
+    } catch (err) {
+      const apiError = err as ApiError;
+      if (apiError.statusCode === 401) {
+        setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+      } else {
+        setError(apiError.message || 'حدث خطأ أثناء تسجيل الدخول');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -91,6 +103,13 @@ const LoginPage: React.FC = () => {
                 />
               </div>
             </div>
+
+            {error && (
+              <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600">
+                <AlertCircle size={20} />
+                <span className="text-sm font-medium">{error}</span>
+              </div>
+            )}
 
             <button 
               type="submit" 
