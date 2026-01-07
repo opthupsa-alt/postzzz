@@ -21,6 +21,7 @@ model Tenant {
   leads       Lead[]
   lists       List[]
   memberships Membership[]
+  reports     Report[]
   users       User[]
 
   @@map("tenants")
@@ -41,6 +42,7 @@ model User {
   leads           Lead[]
   lists           List[]
   memberships     Membership[]
+  reports         Report[]
   defaultTenant   Tenant?      @relation(fields: [defaultTenantId], references: [id])
 
   @@map("users")
@@ -228,6 +230,7 @@ model Lead {
   createdBy    User       @relation(fields: [createdById], references: [id])
   job          Job?       @relation(fields: [jobId], references: [id])
   lists        LeadList[]
+  reports      Report[]
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
@@ -264,4 +267,43 @@ model LeadList {
   @@unique([leadId, listId])
   @@index([listId])
   @@map("lead_lists")
+}
+
+enum ReportStatus {
+  PENDING
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
+enum ReportType {
+  LEAD_ANALYSIS
+  COMPANY_PROFILE
+  MARKET_RESEARCH
+  COMPETITOR_ANALYSIS
+}
+
+model Report {
+  id          String       @id @default(uuid())
+  tenantId    String
+  leadId      String?
+  type        ReportType
+  status      ReportStatus @default(PENDING)
+  title       String
+  content     Json?
+  pdfUrl      String?
+  error       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  completedAt DateTime?
+  createdById String
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead        Lead?        @relation(fields: [leadId], references: [id])
+  createdBy   User         @relation(fields: [createdById], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@index([leadId])
+  @@map("reports")
 }

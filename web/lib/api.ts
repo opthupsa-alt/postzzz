@@ -311,3 +311,76 @@ export async function removeLeadFromList(listId: string, leadId: string): Promis
     method: 'DELETE',
   });
 }
+
+// Reports API
+export type ReportType = 'LEAD_ANALYSIS' | 'COMPANY_PROFILE' | 'MARKET_RESEARCH' | 'COMPETITOR_ANALYSIS';
+export type ReportStatus = 'PENDING' | 'GENERATING' | 'COMPLETED' | 'FAILED';
+
+export interface Report {
+  id: string;
+  title: string;
+  type: ReportType;
+  status: ReportStatus;
+  leadId?: string;
+  content?: Record<string, unknown>;
+  pdfUrl?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  lead?: {
+    id: string;
+    companyName: string;
+  };
+}
+
+export interface CreateReportDto {
+  title: string;
+  type: ReportType;
+  leadId?: string;
+}
+
+export async function getReports(options?: { status?: string; leadId?: string; limit?: number; offset?: number }): Promise<Report[]> {
+  const params = new URLSearchParams();
+  if (options?.status) params.append('status', options.status);
+  if (options?.leadId) params.append('leadId', options.leadId);
+  if (options?.limit) params.append('limit', options.limit.toString());
+  if (options?.offset) params.append('offset', options.offset.toString());
+  const query = params.toString();
+  return apiRequest(`/reports${query ? `?${query}` : ''}`);
+}
+
+export async function getReport(id: string): Promise<Report> {
+  return apiRequest(`/reports/${id}`);
+}
+
+export async function createReport(data: CreateReportDto): Promise<Report> {
+  return apiRequest('/reports', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function generateReport(id: string): Promise<Report> {
+  return apiRequest(`/reports/${id}/generate`, {
+    method: 'POST',
+  });
+}
+
+export async function updateReport(id: string, data: Partial<{ title: string; status: ReportStatus }>): Promise<Report> {
+  return apiRequest(`/reports/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteReport(id: string): Promise<Report> {
+  return apiRequest(`/reports/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getReportsCount(status?: string): Promise<{ count: number }> {
+  const query = status ? `?status=${status}` : '';
+  return apiRequest(`/reports/count${query}`);
+}
