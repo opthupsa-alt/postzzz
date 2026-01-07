@@ -1,9 +1,10 @@
 
-import React from 'react';
-import { Users, Search, MessageSquare, TrendingUp, ArrowUpRight, Zap, Target, BarChart3, Clock, ChevronLeft, Activity, ExternalLink, ShieldCheck, Filter } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Users, Search, MessageSquare, TrendingUp, ArrowUpRight, Zap, Target, BarChart3, Clock, ChevronLeft, Activity, ExternalLink, ShieldCheck, Filter, Loader2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
+import { getJobs, getStoredUser, Job } from '../lib/api';
 
 const StatCard = ({ title, value, icon: Icon, color, trend }: any) => (
   <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all group cursor-pointer relative overflow-hidden">
@@ -76,7 +77,24 @@ const PerformanceChart = () => (
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { savedLeads, jobs } = useStore();
+  const { savedLeads } = useStore();
+  const [apiJobs, setApiJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+  const user = getStoredUser();
+
+  useEffect(() => {
+    const fetchJobs = async () => {
+      try {
+        const jobs = await getJobs();
+        setApiJobs(jobs);
+      } catch (err) {
+        console.error('Failed to fetch jobs:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchJobs();
+  }, []);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
@@ -99,7 +117,7 @@ const DashboardPage: React.FC = () => {
         <StatCard title="إجمالي العملاء" value={savedLeads.length + 1200} icon={Users} color="bg-blue-50 text-blue-600" trend="12" />
         <StatCard title="أدلة مكتشفة" value="4,852" icon={Target} color="bg-purple-50 text-purple-600" trend="18" />
         <StatCard title="رسائل واتساب" value="856" icon={MessageSquare} color="bg-green-50 text-green-600" trend="24" />
-        <StatCard title="عمليات البحث" value={jobs.length + 42} icon={BarChart3} color="bg-orange-50 text-orange-600" trend="5" />
+        <StatCard title="عمليات البحث" value={apiJobs.length + 42} icon={BarChart3} color="bg-orange-50 text-orange-600" trend="5" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -146,26 +164,55 @@ const DashboardPage: React.FC = () => {
             <h3 className="font-black text-xl text-gray-900 mb-8 flex items-center gap-3">
               <Clock size={24} className="text-blue-600" /> النشاط اللحظي
             </h3>
-            <div className="space-y-10 relative before:absolute before:inset-y-0 before:right-3 before:w-px before:bg-gray-100">
-              {[
-                { type: 'message', content: 'تم إرسال رسالة واتساب لشركة الأمل', time: '10:30 ص', icon: MessageSquare },
-                { type: 'search', content: 'اكتمل بحث "محلات تجارية الرياض"', time: '09:15 ص', icon: Search },
-                { type: 'lead', content: 'تم إضافة 15 عميل جديد للقائمة', time: 'أمس', icon: Users },
-                { type: 'report', content: 'تم إنشاء تقرير جديد لشركة نماء', time: 'أمس', icon: Zap },
-              ].map((activity, i) => (
-                <div key={i} className="relative flex items-start gap-8 group">
-                  <div className="absolute right-0 w-6 h-6 bg-white border-2 border-blue-600 rounded-lg flex items-center justify-center z-10 -mr-1 shadow-sm group-hover:scale-125 transition-transform">
-                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-full"></div>
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="animate-spin text-blue-600" size={32} />
+              </div>
+            ) : apiJobs.length > 0 ? (
+              <div className="space-y-10 relative before:absolute before:inset-y-0 before:right-3 before:w-px before:bg-gray-100">
+                {apiJobs.slice(0, 5).map((job, i) => (
+                  <div key={job.id} className="relative flex items-start gap-8 group">
+                    <div className={`absolute right-0 w-6 h-6 bg-white border-2 rounded-lg flex items-center justify-center z-10 -mr-1 shadow-sm group-hover:scale-125 transition-transform ${
+                      job.status === 'COMPLETED' ? 'border-green-500' : 
+                      job.status === 'FAILED' ? 'border-red-500' : 
+                      job.status === 'RUNNING' ? 'border-blue-500' : 'border-gray-400'
+                    }`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${
+                        job.status === 'COMPLETED' ? 'bg-green-500' : 
+                        job.status === 'FAILED' ? 'bg-red-500' : 
+                        job.status === 'RUNNING' ? 'bg-blue-500 animate-pulse' : 'bg-gray-400'
+                      }`}></div>
+                    </div>
+                    <div className="pr-4">
+                      <p className="text-sm text-gray-800 font-bold leading-relaxed">
+                        {job.type === 'PROSPECT_SEARCH' ? 'بحث عن عملاء' : job.type} - {job.status === 'COMPLETED' ? 'مكتمل' : job.status === 'RUNNING' ? 'جاري' : job.status === 'FAILED' ? 'فشل' : 'في الانتظار'}
+                      </p>
+                      <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1 block">
+                        {new Date(job.createdAt).toLocaleString('ar-SA')}
+                      </span>
+                    </div>
                   </div>
-                  <div className="pr-4">
-                    <p className="text-sm text-gray-800 font-bold leading-relaxed">{activity.content}</p>
-                    <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1 block">{activity.time}</span>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-10 relative before:absolute before:inset-y-0 before:right-3 before:w-px before:bg-gray-100">
+                {[
+                  { content: 'مرحباً ' + (user?.name || 'بك') + '! ابدأ بإنشاء أول عملية بحث', time: 'الآن', icon: Search },
+                ].map((activity, i) => (
+                  <div key={i} className="relative flex items-start gap-8 group">
+                    <div className="absolute right-0 w-6 h-6 bg-white border-2 border-blue-600 rounded-lg flex items-center justify-center z-10 -mr-1 shadow-sm group-hover:scale-125 transition-transform">
+                      <div className="w-1.5 h-1.5 bg-blue-600 rounded-full"></div>
+                    </div>
+                    <div className="pr-4">
+                      <p className="text-sm text-gray-800 font-bold leading-relaxed">{activity.content}</p>
+                      <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1 block">{activity.time}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-            <button className="w-full mt-10 py-4 bg-gray-50 hover:bg-gray-100 rounded-2xl text-xs font-black text-gray-500 transition-all border border-gray-100">
-              تحميل المزيد من النشاط
+                ))}
+              </div>
+            )}
+            <button onClick={() => navigate('/app/prospecting')} className="w-full mt-10 py-4 bg-gray-50 hover:bg-gray-100 rounded-2xl text-xs font-black text-gray-500 transition-all border border-gray-100">
+              {apiJobs.length > 0 ? 'عرض جميع العمليات' : 'ابدأ بحث جديد'}
             </button>
           </div>
 

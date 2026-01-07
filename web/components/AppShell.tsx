@@ -34,6 +34,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [user, setUser] = useState(getStoredUser());
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -225,8 +226,8 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 </div>
               )}
             </div>
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-black border-2 border-white shadow-xl shadow-blue-100">
-              أ
+            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-black border-2 border-white shadow-xl shadow-blue-100" title={user?.email || ''}>
+              {user?.name?.charAt(0) || 'م'}
             </div>
           </div>
         </header>

@@ -16,6 +16,7 @@ import TeamPage from './pages/TeamPage';
 import IntegrationsPage from './pages/IntegrationsPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ExtensionSidePanel from './pages/ExtensionSidePanel';
 import NewLeadPage from './pages/NewLeadPage';
@@ -26,6 +27,7 @@ const App = () => {
     <Router>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/extension-preview" element={<ExtensionSidePanel />} />
         
