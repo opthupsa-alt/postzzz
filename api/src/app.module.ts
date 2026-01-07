@@ -11,6 +11,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { LeadsModule } from './leads/leads.module';
 import { ListsModule } from './lists/lists.module';
 import { ReportsModule } from './reports/reports.module';
+import { AdminModule } from './admin/admin.module';
 import { AgentModule } from './agent/agent.module';
 import { AuditModule } from './audit/audit.module';
 
@@ -55,6 +56,7 @@ import { AuditModule } from './audit/audit.module';
     LeadsModule,
     ListsModule,
     ReportsModule,
+    AdminModule,
     AgentModule,
   ],
 })

@@ -8,11 +8,18 @@ datasource db {
   directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
 model Tenant {
   id          String       @id @default(uuid())
   name        String
   slug        String       @unique
   planId      String?
+  status      TenantStatus @default(ACTIVE)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   auditLogs   AuditLog[]
@@ -33,6 +40,8 @@ model User {
   passwordHash    String
   name            String
   avatarUrl       String?
+  isSuperAdmin    Boolean      @default(false)
+  isActive        Boolean      @default(true)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   defaultTenantId String?
