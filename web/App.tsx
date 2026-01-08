@@ -27,6 +27,7 @@ import AdminTenants from './pages/admin/AdminTenants';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminPlans from './pages/admin/AdminPlans';
 import AdminSubscriptions from './pages/admin/AdminSubscriptions';
+import AdminSettings from './pages/admin/AdminSettings';
 
 const App = () => {
   return (
@@ -50,6 +51,7 @@ const App = () => {
           <Route path="users" element={<AdminUsers />} />
           <Route path="plans" element={<AdminPlans />} />
           <Route path="subscriptions" element={<AdminSubscriptions />} />
+          <Route path="settings" element={<AdminSettings />} />
         </Route>
 
         <Route path="/app/*" element={

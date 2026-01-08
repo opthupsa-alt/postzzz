@@ -11,6 +11,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { UpdateTenantStatusDto } from './dto/update-tenant-status.dto';
+import { UpdatePlatformSettingsDto } from './dto/update-platform-settings.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SuperAdminGuard } from '../common/guards/super-admin.guard';
 
@@ -108,5 +109,21 @@ export class AdminController {
     @Body() body: { isSuperAdmin: boolean },
   ) {
     return this.adminService.toggleSuperAdmin(id, body.isSuperAdmin);
+  }
+
+  // ==================== Platform Settings ====================
+
+  @Get('settings')
+  @ApiOperation({ summary: 'Get platform settings' })
+  @ApiResponse({ status: 200, description: 'Platform settings' })
+  async getSettings() {
+    return this.adminService.getPlatformSettings();
+  }
+
+  @Patch('settings')
+  @ApiOperation({ summary: 'Update platform settings' })
+  @ApiResponse({ status: 200, description: 'Settings updated' })
+  async updateSettings(@Body() dto: UpdatePlatformSettingsDto) {
+    return this.adminService.updatePlatformSettings(dto);
   }
 }

@@ -28,8 +28,8 @@ import {
   Sparkles,
   TrendingUp,
   AlertCircle,
-  // Fix: add missing Smartphone icon
-  Smartphone
+  Smartphone,
+  Star
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { JobStatus, Evidence, Report, Activity, Lead } from '../types';
@@ -270,9 +270,9 @@ const LeadDetailPage: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm space-y-8">
+          <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm space-y-6">
             <h3 className="font-black text-xl text-gray-900 border-b border-gray-50 pb-4">معلومات التواصل</h3>
-            <div className="space-y-8">
+            <div className="space-y-6">
               <div className="flex items-start gap-4 group">
                 <div className="p-3 bg-gray-50 rounded-2xl text-gray-400 group-hover:text-blue-600 group-hover:bg-blue-50 transition-all"><Phone size={22} /></div>
                 <div>
@@ -291,7 +291,65 @@ const LeadDetailPage: React.FC = () => {
                   ) : <p className="text-base font-bold text-gray-400 italic">غير متوفر</p>}
                 </div>
               </div>
+              {lead.email && (
+                <div className="flex items-start gap-4 group">
+                  <div className="p-3 bg-gray-50 rounded-2xl text-gray-400 group-hover:text-blue-600 group-hover:bg-blue-50 transition-all"><Mail size={22} /></div>
+                  <div>
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">البريد الإلكتروني</p>
+                    <a href={`mailto:${lead.email}`} className="text-base font-black text-blue-600 hover:underline">{lead.email}</a>
+                  </div>
+                </div>
+              )}
+              {lead.address && (
+                <div className="flex items-start gap-4 group">
+                  <div className="p-3 bg-gray-50 rounded-2xl text-gray-400 group-hover:text-blue-600 group-hover:bg-blue-50 transition-all"><MapPin size={22} /></div>
+                  <div>
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">العنوان</p>
+                    <p className="text-sm font-bold text-gray-700">{lead.address}</p>
+                  </div>
+                </div>
+              )}
             </div>
+            
+            {/* Rating & Reviews */}
+            {(lead.metadata?.rating || lead.metadata?.reviews) && (
+              <div className="pt-4 border-t border-gray-100">
+                <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">التقييم</h4>
+                <div className="flex items-center gap-4">
+                  {lead.metadata?.rating && (
+                    <div className="flex items-center gap-2 bg-yellow-50 px-4 py-2 rounded-xl">
+                      <Star size={18} className="text-yellow-500 fill-yellow-500" />
+                      <span className="font-black text-gray-900">{lead.metadata.rating}</span>
+                    </div>
+                  )}
+                  {lead.metadata?.reviews && (
+                    <span className="text-sm text-gray-500 font-bold">({lead.metadata.reviews} تقييم)</span>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* Business Hours */}
+            {lead.metadata?.hours && (
+              <div className="pt-4 border-t border-gray-100">
+                <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">ساعات العمل</h4>
+                <p className="text-sm font-bold text-gray-700">{lead.metadata.hours}</p>
+              </div>
+            )}
+            
+            {/* Source Info */}
+            {lead.metadata?.sourceUrl && (
+              <div className="pt-4 border-t border-gray-100">
+                <a 
+                  href={lead.metadata.sourceUrl} 
+                  target="_blank" 
+                  className="flex items-center gap-2 text-xs font-bold text-gray-400 hover:text-blue-600 transition-colors"
+                >
+                  <ExternalLink size={14} /> عرض في خرائط جوجل
+                </a>
+              </div>
+            )}
+            
             <button className="w-full py-4 bg-gray-50 text-gray-500 font-black rounded-2xl hover:bg-gray-100 transition-all text-sm border border-gray-100">تعديل البيانات</button>
           </div>
 

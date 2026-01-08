@@ -8,6 +8,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 // Token storage keys
 const TOKEN_KEY = 'leedz_token';
 const USER_KEY = 'leedz_user';
+const TENANT_KEY = 'leedz_tenant';
 
 // Types
 export interface User {
@@ -43,6 +44,11 @@ export function setToken(token: string): void {
 export function removeToken(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(TENANT_KEY);
+}
+
+export function setStoredTenant(tenantId: string, role: string): void {
+  localStorage.setItem(TENANT_KEY, JSON.stringify({ tenantId, role }));
 }
 
 export function getStoredUser(): User | null {
@@ -110,6 +116,7 @@ export async function login(email: string, password: string): Promise<AuthRespon
   
   setToken(data.token);
   setStoredUser(data.user);
+  setStoredTenant(data.tenantId, data.role);
   
   return data;
 }
@@ -122,6 +129,7 @@ export async function signup(name: string, email: string, password: string): Pro
   
   setToken(data.token);
   setStoredUser(data.user);
+  setStoredTenant(data.tenantId, data.role);
   
   return data;
 }
@@ -181,6 +189,7 @@ export interface Lead {
   companyName: string;
   industry?: string;
   city?: string;
+  address?: string;
   phone?: string;
   email?: string;
   website?: string;
@@ -188,6 +197,16 @@ export interface Lead {
   source?: string;
   notes?: string;
   jobId?: string;
+  metadata?: {
+    rating?: string;
+    reviews?: string;
+    type?: string;
+    hours?: string;
+    sourceUrl?: string;
+    matchScore?: number;
+    searchQuery?: string;
+    searchCity?: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -196,6 +215,7 @@ export interface CreateLeadDto {
   companyName: string;
   industry?: string;
   city?: string;
+  address?: string;
   phone?: string;
   email?: string;
   website?: string;
@@ -203,6 +223,7 @@ export interface CreateLeadDto {
   source?: string;
   notes?: string;
   jobId?: string;
+  metadata?: Record<string, any>;
 }
 
 export async function getLeads(options?: { status?: string; limit?: number; offset?: number }): Promise<Lead[]> {

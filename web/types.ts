@@ -2,8 +2,10 @@
 export enum JobStatus {
   PENDING = 'PENDING',
   RUNNING = 'RUNNING',
-  SUCCESS = 'SUCCESS',
-  FAILED = 'FAILED'
+  COMPLETED = 'COMPLETED',
+  SUCCESS = 'SUCCESS', // Alias for COMPLETED
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED'
 }
 
 export interface Job {
@@ -23,11 +25,26 @@ export interface Lead {
   city: string;
   phone?: string;
   website?: string;
+  email?: string;
+  address?: string;
   status: 'NEW' | 'PROSPECTED' | 'CONTACTED' | 'QUALIFIED' | 'LOST';
   evidenceCount: number;
   hasReport: boolean;
   tags?: string[];
   listId?: string;
+  source?: string;
+  jobId?: string;
+  createdAt?: string;
+  metadata?: {
+    rating?: string;
+    reviews?: string;
+    type?: string;
+    hours?: string;
+    sourceUrl?: string;
+    matchScore?: number;
+    searchQuery?: string;
+    searchCity?: string;
+  };
 }
 
 export interface LeadList {

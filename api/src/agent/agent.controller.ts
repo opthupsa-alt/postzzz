@@ -25,6 +25,15 @@ export class AgentController {
     return this.agentService.getConfig();
   }
 
+  @Get('jobs/pending')
+  @ApiHeader({ name: 'Authorization', required: true })
+  @ApiOperation({ summary: 'Get pending jobs for agent to execute' })
+  @ApiResponse({ status: 200, description: 'List of pending jobs' })
+  async getPendingJobs(@Headers('authorization') auth: string) {
+    // Extract tenant from token
+    return this.agentService.getPendingJobs(auth);
+  }
+
   @Post('heartbeat')
   @ApiHeader({ name: 'X-Agent-Id', required: true })
   @ApiOperation({ summary: 'Agent heartbeat' })

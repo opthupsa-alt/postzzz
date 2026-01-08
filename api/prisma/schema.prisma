@@ -212,6 +212,7 @@ model Lead {
   companyName  String
   industry     String?
   city         String?
+  address      String?
   phone        String?
   email        String?
   website      String?
@@ -219,6 +220,7 @@ model Lead {
   source       String?
   notes        String?
   jobId        String?
+  metadata     Json?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   createdById  String
@@ -391,3 +393,41 @@ model UsageCounter {
   @@index([tenantId])
   @@map("usage_counters")
 }
+
+// ==================== Platform Settings (Super Admin) ====================
+
+model PlatformSettings {
+  id          String   @id @default("default")
+  
+  // Platform URLs
+  platformUrl     String   @default("http://localhost:3002")  // Web app URL
+  apiUrl          String   @default("http://localhost:3001")  // API URL
+  
+  // Search Settings
+  searchMethod        SearchMethod @default(GOOGLE_MAPS_REAL)  // GOOGLE_MAPS_REAL or GOOGLE_MAPS_API
+  googleApiKey        String?      // Only used if searchMethod = GOOGLE_MAPS_API
+  maxSearchResults    Int     @default(30)     // Max results for bulk search
+  defaultCountry      String  @default("SA")   // Default country code (ISO 3166-1 alpha-2)
+  
+  // Extension Settings
+  extensionAutoLogin    Boolean @default(true)   // Auto-login from platform
+  extensionDebugMode    Boolean @default(false)  // Show debug info in extension
+  
+  // Subscription Settings (simplified for now)
+  requireSubscription   Boolean @default(false)  // If false, all users are "subscribed"
+  trialDays             Int     @default(14)     // Trial period for new tenants
+  
+  // Rate Limits
+  searchRateLimit       Int     @default(10)     // Searches per minute
+  crawlRateLimit        Int     @default(20)     // Page crawls per minute
+  
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_settings")
+}
+
+enum SearchMethod {
+  GOOGLE_MAPS_REAL   // Real browser search (no API)
+  GOOGLE_MAPS_API    // Google Places API
+}
+

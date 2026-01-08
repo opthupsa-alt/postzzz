@@ -373,8 +373,20 @@
   </style>
 </head>
 <body>
+  <!-- Loading Screen -->
+  <div id="loadingContainer" class="login-container">
+    <div class="login-card" style="text-align: center;">
+      <div class="login-logo">
+        <h2>ليدز</h2>
+        <p>جاري التحقق من الاتصال...</p>
+      </div>
+      <div class="spinner" style="margin: 20px auto; border-color: #3b82f6; border-top-color: #1d4ed8;"></div>
+      <p id="loadingStatus" style="font-size: 13px; color: #64748b;">جاري التحقق من حالة تسجيل الدخول...</p>
+    </div>
+  </div>
+
   <!-- Login Screen -->
-  <div id="loginContainer" class="login-container">
+  <div id="loginContainer" class="login-container hide">
     <div class="login-card">
       <div class="login-logo">
         <h2>ليدز</h2>
@@ -382,6 +394,14 @@
       </div>
       
       <div id="loginError" class="error-message"></div>
+      
+      <!-- Auto-login option -->
+      <div id="autoLoginSection" style="margin-bottom: 20px; display: none;">
+        <button id="autoLoginBtn" class="btn btn-primary" style="margin-bottom: 12px;">
+          <span id="autoLoginBtnText">🔗 تسجيل الدخول من المنصة</span>
+        </button>
+        <div style="text-align: center; color: #94a3b8; font-size: 12px; margin-bottom: 12px;">أو</div>
+      </div>
       
       <form id="loginForm">
         <div class="form-group">
@@ -424,41 +444,61 @@
         </div>
       </div>
       
-      <!-- Current Page -->
-      <div class="current-page">
-        <h3>الصفحة الحالية</h3>
-        <div id="currentPageUrl" class="page-url">جاري التحميل...</div>
+      <!-- Active Job Status -->
+      <div id="activeJobSection" class="status-card" style="display: none;">
+        <h3>🔄 المهمة الحالية</h3>
+        <div id="activeJobInfo" style="margin-top: 12px;">
+          <div id="jobType" style="font-weight: 700; color: #1e293b; margin-bottom: 8px;">بحث...</div>
+          <div id="jobProgress" style="font-size: 13px; color: #64748b;">جاري التنفيذ...</div>
+          <div style="margin-top: 12px; background: #e2e8f0; border-radius: 8px; height: 8px; overflow: hidden;">
+            <div id="jobProgressBar" style="background: linear-gradient(90deg, #3b82f6, #1d4ed8); height: 100%; width: 0%; transition: width 0.3s;"></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Recent Results -->
+      <div id="recentResultsSection" class="status-card" style="display: none;">
+        <h3>📋 آخر النتائج</h3>
+        <div id="recentResultsInfo" style="margin-top: 12px;">
+          <div style="font-size: 13px; color: #64748b; margin-bottom: 8px;">تم العثور على: <span id="resultsCount">0</span> نتيجة</div>
+          <div id="resultsList" style="max-height: 200px; overflow-y: auto;"></div>
+        </div>
+      </div>
+      
+      <!-- Test Search Section -->
+      <div class="status-card">
+        <h3>🔍 اختبار البحث</h3>
+        <div style="margin-top: 12px;">
+          <!-- Search Type Toggle -->
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button id="searchTypeSingle" class="search-type-btn" style="flex: 1; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px; background: white; cursor: pointer; font-weight: 600;">
+              🏢 شركة محددة
+            </button>
+            <button id="searchTypeBulk" class="search-type-btn active" style="flex: 1; padding: 10px; border: 2px solid #3b82f6; border-radius: 8px; background: #eff6ff; cursor: pointer; font-weight: 600; color: #1d4ed8;">
+              📋 بحث متعدد
+            </button>
+          </div>
+          <input type="text" id="testQuery" placeholder="النشاط (مثال: مطاعم)" style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; font-family: inherit;">
+          <input type="text" id="testCity" placeholder="المدينة (مثال: الرياض)" style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; font-family: inherit;">
+          <button id="testSearchBtn" style="width: 100%; padding: 12px; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;">
+            🚀 بدء البحث التجريبي
+          </button>
+        </div>
       </div>
       
       <!-- Info Box -->
       <div class="info-box">
-        <h4>🚧 قيد التطوير</h4>
-        <p>ميزات البحث والاستخراج قيد التطوير. ترقب التحديثات القادمة!</p>
+        <h4>ℹ️ كيفية الاستخدام</h4>
+        <p>استخدم البحث التجريبي أعلاه أو افتح المنصة للبحث من هناك.</p>
       </div>
       
       <!-- Actions -->
       <div class="actions">
-        <button class="action-btn" disabled>
-          <div class="action-icon">🔍</div>
+        <button id="openPlatformBtn" class="action-btn">
+          <div class="action-icon">🌐</div>
           <div class="action-text">
-            <h4>بحث Google Maps</h4>
-            <p>ابحث عن عملاء محتملين (قريباً)</p>
-          </div>
-        </button>
-        
-        <button class="action-btn" disabled>
-          <div class="action-icon">📊</div>
-          <div class="action-text">
-            <h4>تحليل الصفحة</h4>
-            <p>استخرج بيانات من الصفحة الحالية (قريباً)</p>
-          </div>
-        </button>
-        
-        <button class="action-btn" disabled>
-          <div class="action-icon">💬</div>
-          <div class="action-text">
-            <h4>إرسال واتساب</h4>
-            <p>أرسل رسالة للعميل (قريباً)</p>
+            <h4>فتح المنصة</h4>
+            <p>افتح لوحة تحكم ليدز للبحث</p>
           </div>
         </button>
       </div>

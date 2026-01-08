@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JobsService } from '../jobs/jobs.service';
 import { AuditService } from '../audit/audit.service';
@@ -30,17 +30,41 @@ export class AgentService {
 
   constructor(
     private prisma: PrismaService,
+    @Inject(forwardRef(() => JobsService))
     private jobsService: JobsService,
     private auditService: AuditService,
   ) {}
 
   async getConfig() {
+    // Get platform settings
+    let settings = await this.prisma.platformSettings.findUnique({
+      where: { id: 'default' },
+    });
+
+    if (!settings) {
+      settings = await this.prisma.platformSettings.create({
+        data: { id: 'default' },
+      });
+    }
+
     return {
       version: '1.0.0',
       connectors: ['google_maps', 'web_search', 'website_crawl', 'social_public'],
       maxEvidenceSize: this.MAX_EVIDENCE_SIZE,
       heartbeatInterval: 30000, // 30 seconds
       errorCodes: Object.keys(ERROR_CODES),
+      // Platform settings for extension
+      platform: {
+        platformUrl: settings.platformUrl,
+        apiUrl: settings.apiUrl,
+        extensionAutoLogin: settings.extensionAutoLogin,
+        extensionDebugMode: settings.extensionDebugMode,
+        searchMethod: settings.searchMethod,
+        searchRateLimit: settings.searchRateLimit,
+        crawlRateLimit: settings.crawlRateLimit,
+        maxSearchResults: settings.maxSearchResults,
+        defaultCountry: settings.defaultCountry,
+      },
     };
   }
 
@@ -92,8 +116,21 @@ export class AgentService {
       throw new NotFoundException('Job not found');
     }
 
-    if (job.assignedAgentId !== agentId) {
+    // Allow progress update if agent matches OR if job was never assigned
+    if (job.assignedAgentId && job.assignedAgentId !== agentId) {
       throw new BadRequestException('Job is not assigned to this agent');
+    }
+
+    // If job wasn't assigned yet, assign it now
+    if (!job.assignedAgentId) {
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: { 
+          assignedAgentId: agentId,
+          status: 'RUNNING',
+          startedAt: new Date(),
+        },
+      });
     }
 
     return this.jobsService.updateProgress(jobId, progress, message);
@@ -190,8 +227,17 @@ export class AgentService {
       throw new NotFoundException('Job not found');
     }
 
-    if (job.assignedAgentId !== agentId) {
+    // Allow completion if agent matches OR if job was never assigned (for flexibility)
+    if (job.assignedAgentId && job.assignedAgentId !== agentId) {
       throw new BadRequestException('Job is not assigned to this agent');
+    }
+
+    // If job wasn't assigned yet, assign it now before completing
+    if (!job.assignedAgentId) {
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: { assignedAgentId: agentId },
+      });
     }
 
     const updated = await this.jobsService.markDone(jobId, output);
@@ -241,5 +287,47 @@ export class AgentService {
     );
 
     return sanitized;
+  }
+
+  async getPendingJobs(authHeader: string) {
+    // Extract token and decode to get tenantId
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return { jobs: [] };
+    }
+    
+    const token = authHeader.replace('Bearer ', '');
+    
+    try {
+      // Decode JWT to get tenantId (simple decode, not verify - verification done by guard)
+      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+      const tenantId = payload.tenantId;
+      
+      if (!tenantId) {
+        return { jobs: [] };
+      }
+      
+      // Get pending jobs for this tenant
+      const jobs = await this.prisma.job.findMany({
+        where: {
+          tenantId,
+          status: 'PENDING',
+        },
+        orderBy: { createdAt: 'asc' },
+        take: 10,
+      });
+      
+      return {
+        jobs: jobs.map(job => ({
+          jobId: job.id,
+          type: job.type,
+          context: job.input,
+          tenantId: job.tenantId,
+          createdAt: job.createdAt,
+        })),
+      };
+    } catch (e) {
+      console.error('Failed to decode token:', e);
+      return { jobs: [] };
+    }
   }
 }

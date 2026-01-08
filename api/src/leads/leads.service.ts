@@ -20,17 +20,32 @@ export class LeadsService {
   }
 
   async bulkCreate(tenantId: string, userId: string, leads: CreateLeadDto[]) {
+    console.log('[LeadsService] Bulk creating leads:', leads.length);
+    
     const data = leads.map((dto) => ({
-      ...dto,
+      companyName: dto.companyName,
+      industry: dto.industry || null,
+      city: dto.city || null,
+      address: dto.address || null,
+      phone: dto.phone || null,
+      email: dto.email || null,
+      website: dto.website || null,
+      source: dto.source || null,
+      notes: dto.notes || null,
+      jobId: dto.jobId || null,
+      metadata: dto.metadata || undefined,
       status: (dto.status as LeadStatus) || LeadStatus.NEW,
       tenantId,
       createdById: userId,
     }));
 
-    return this.prisma.lead.createMany({
+    const result = await this.prisma.lead.createMany({
       data,
       skipDuplicates: true,
     });
+    
+    console.log('[LeadsService] Created leads:', result.count);
+    return result;
   }
 
   async findByTenant(

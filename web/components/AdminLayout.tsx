@@ -11,7 +11,7 @@ const AdminLayout: React.FC = () => {
     { to: '/admin/users', icon: Users, label: 'المستخدمين' },
     { to: '/admin/plans', icon: CreditCard, label: 'الباقات' },
     { to: '/admin/subscriptions', icon: CreditCard, label: 'الاشتراكات' },
-    { to: '/admin/settings', icon: Settings, label: 'الإعدادات', disabled: true },
+    { to: '/admin/settings', icon: Settings, label: 'الإعدادات' },
   ];
 
   return (
@@ -38,20 +38,14 @@ const AdminLayout: React.FC = () => {
               end={item.end}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all ${
-                  item.disabled
-                    ? 'text-gray-600 cursor-not-allowed'
-                    : isActive
+                  isActive
                     ? 'bg-white text-gray-900'
                     : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                 }`
               }
-              onClick={(e) => item.disabled && e.preventDefault()}
             >
               <item.icon size={20} />
               <span>{item.label}</span>
-              {item.disabled && (
-                <span className="mr-auto text-[10px] bg-gray-700 px-2 py-0.5 rounded-full">قريباً</span>
-              )}
             </NavLink>
           ))}
         </nav>

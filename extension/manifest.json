@@ -14,18 +14,21 @@
     "storage",
     "tabs",
     "sidePanel",
-    "activeTab"
+    "activeTab",
+    "scripting",
+    "windows",
+    "alarms"
   ],
   
   "host_permissions": [
     "http://localhost:3001/*",
+    "http://localhost:5173/*",
     "https://www.google.com/maps/*",
     "https://maps.google.com/*"
   ],
   
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
   
   "side_panel": {

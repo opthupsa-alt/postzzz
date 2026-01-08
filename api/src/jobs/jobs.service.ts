@@ -3,10 +3,13 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { JobStatus } from '@prisma/client';
+import { AgentGateway } from '../agent/agent.gateway';
 
 export interface CreateJobDto {
   type: string;
@@ -18,6 +21,8 @@ export class JobsService {
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
+    @Inject(forwardRef(() => AgentGateway))
+    private agentGateway: AgentGateway,
   ) {}
 
   async create(tenantId: string, userId: string, dto: CreateJobDto) {
@@ -39,6 +44,14 @@ export class JobsService {
       entityType: 'JOB',
       entityId: job.id,
       metadata: { type: dto.type },
+    });
+
+    // Broadcast job to connected agents (extensions)
+    this.agentGateway.broadcastNewJob({
+      jobId: job.id,
+      type: job.type,
+      context: dto.input,
+      tenantId,
     });
 
     return job;

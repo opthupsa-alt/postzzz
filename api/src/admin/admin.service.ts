@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { TenantStatus } from '@prisma/client';
+import { TenantStatus, SearchMethod } from '@prisma/client';
+import { UpdatePlatformSettingsDto } from './dto/update-platform-settings.dto';
 
 @Injectable()
 export class AdminService {
@@ -260,5 +261,58 @@ export class AdminService {
       where: { id },
       data: { isSuperAdmin },
     });
+  }
+
+  // ==================== Platform Settings ====================
+
+  async getPlatformSettings() {
+    // Get or create default settings
+    let settings = await this.prisma.platformSettings.findUnique({
+      where: { id: 'default' },
+    });
+
+    if (!settings) {
+      settings = await this.prisma.platformSettings.create({
+        data: { id: 'default' },
+      });
+    }
+
+    return settings;
+  }
+
+  async updatePlatformSettings(dto: UpdatePlatformSettingsDto) {
+    // Ensure settings exist
+    await this.getPlatformSettings();
+
+    const data: any = {};
+
+    if (dto.platformUrl !== undefined) data.platformUrl = dto.platformUrl;
+    if (dto.apiUrl !== undefined) data.apiUrl = dto.apiUrl;
+    if (dto.searchMethod !== undefined) data.searchMethod = dto.searchMethod as SearchMethod;
+    if (dto.googleApiKey !== undefined) data.googleApiKey = dto.googleApiKey;
+    if (dto.extensionAutoLogin !== undefined) data.extensionAutoLogin = dto.extensionAutoLogin;
+    if (dto.extensionDebugMode !== undefined) data.extensionDebugMode = dto.extensionDebugMode;
+    if (dto.requireSubscription !== undefined) data.requireSubscription = dto.requireSubscription;
+    if (dto.trialDays !== undefined) data.trialDays = dto.trialDays;
+    if (dto.searchRateLimit !== undefined) data.searchRateLimit = dto.searchRateLimit;
+    if (dto.crawlRateLimit !== undefined) data.crawlRateLimit = dto.crawlRateLimit;
+
+    return this.prisma.platformSettings.update({
+      where: { id: 'default' },
+      data,
+    });
+  }
+
+  // Public endpoint for extension to get config (no auth required for some fields)
+  async getPublicPlatformConfig() {
+    const settings = await this.getPlatformSettings();
+    
+    return {
+      platformUrl: settings.platformUrl,
+      apiUrl: settings.apiUrl,
+      extensionAutoLogin: settings.extensionAutoLogin,
+      searchMethod: settings.searchMethod,
+      // Don't expose sensitive fields like googleApiKey
+    };
   }
 }

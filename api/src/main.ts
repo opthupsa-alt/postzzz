@@ -19,22 +19,18 @@ async function bootstrap() {
     }),
   );
 
-  // CORS configuration
-  const corsOrigins = process.env.CORS_ORIGINS?.split(',') || [
-    'http://localhost:5173',
-    'http://localhost:3000',
-  ];
-
-  // Add Chrome Extension origin if configured
-  if (process.env.EXTENSION_ID) {
-    corsOrigins.push(`chrome-extension://${process.env.EXTENSION_ID}`);
-  }
-
+  // CORS configuration - Allow all origins in development
+  const isDev = process.env.NODE_ENV !== 'production';
+  
   app.enableCors({
-    origin: corsOrigins,
+    origin: isDev ? true : (process.env.CORS_ORIGINS?.split(',') || [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'http://localhost:3002',
+    ]),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-Id', 'X-Agent-Id'],
   });
 
   // Swagger documentation (enabled if SWAGGER_ENABLED=1)

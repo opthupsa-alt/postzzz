@@ -60,4 +60,13 @@ export class CreateLeadDto {
   @IsOptional()
   @IsString()
   jobId?: string;
+
+  @ApiPropertyOptional({ description: 'Address' })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional({ description: 'Additional metadata' })
+  @IsOptional()
+  metadata?: Record<string, any>;
 }

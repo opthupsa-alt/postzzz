@@ -25,13 +25,14 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(private agentService: AgentService) {}
 
   async handleConnection(client: Socket) {
-    const agentId = client.handshake.headers['x-agent-id'] as string;
+    // Get agentId from header or auth payload
+    const agentId = client.handshake.headers['x-agent-id'] as string || 
+                    client.handshake.auth?.agentId ||
+                    `agent_${client.id}`;
 
-    if (!agentId) {
-      client.disconnect();
-      return;
-    }
-
+    // Store agentId on socket for later use
+    (client as any).agentId = agentId;
+    
     this.connectedAgents.set(agentId, client);
     console.log(`Agent connected: ${agentId}`);
 
@@ -41,7 +42,7 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   handleDisconnect(client: Socket) {
-    const agentId = client.handshake.headers['x-agent-id'] as string;
+    const agentId = (client as any).agentId || client.handshake.headers['x-agent-id'] as string;
 
     if (agentId) {
       this.connectedAgents.delete(agentId);
@@ -129,6 +130,18 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // Broadcast to all agents
   broadcastNewJob(job: any) {
+    const connectedCount = this.connectedAgents.size;
+    console.log(`Broadcasting job to ${connectedCount} connected agents:`, job.jobId, job.type);
+    
+    if (connectedCount === 0) {
+      console.warn('No agents connected to receive job!');
+    }
+    
     this.server.emit('job:available', job);
+  }
+  
+  // Get connected agents count
+  getConnectedAgentsCount(): number {
+    return this.connectedAgents.size;
   }
 }
