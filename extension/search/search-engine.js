@@ -12,14 +12,16 @@
  */
 
 class SearchEngine {
-  constructor(windowManager, smartMatcher) {
+  constructor(windowManager, smartMatcher, socialScraper = null) {
     this.windowManager = windowManager;
     this.smartMatcher = smartMatcher;
+    this.socialScraper = socialScraper || (windowManager ? new SocialMediaScraper(windowManager) : null);
     this.config = {
       matchThreshold: 90,
       enableGoogleMaps: true,
       enableGoogleSearch: true,
       enableSocialMedia: true,
+      enableSocialScraping: true, // تفعيل استخراج بيانات السوشيال
       maxResults: 30,
       searchDelay: 2000,
     };
@@ -206,6 +208,39 @@ class SearchEngine {
             result.matchScore = 75;
             result.sources.push('socialMedia');
           }
+        }
+      }
+
+      // ==================== Layer 4: Social Media Deep Scraping ====================
+      // استخراج البيانات الفعلية من صفحات السوشيال
+      const socialLinks = result.data?.links || {};
+      const hasSocialLinks = Object.keys(socialLinks).some(k => 
+        ['instagram', 'twitter', 'facebook', 'linkedin', 'tiktok', 'youtube', 'snapchat'].includes(k) && socialLinks[k]
+      );
+
+      if (hasSocialLinks && !this.aborted && this.socialScraper) {
+        if (onProgress) onProgress(85, 'جاري تحليل حسابات التواصل الاجتماعي...');
+        
+        try {
+          const socialData = await this.socialScraper.scrapeAll(socialLinks, (p, m) => {
+            if (onProgress) onProgress(85 + p * 0.1, m);
+          });
+
+          if (Object.keys(socialData).length > 0) {
+            // إضافة البيانات المفصلة
+            result.data.socialProfiles = socialData;
+            
+            // إنشاء ملخص شامل
+            result.data.socialSummary = this.socialScraper.generateSocialSummary(socialData);
+            
+            if (!result.sources.includes('socialScraper')) {
+              result.sources.push('socialScraper');
+            }
+
+            console.log('[SearchEngine] Social scraping complete:', Object.keys(socialData));
+          }
+        } catch (error) {
+          console.error('[SearchEngine] Social scraping error:', error);
         }
       }
 

@@ -1,5 +1,22 @@
 import { Injectable } from '@nestjs/common';
 
+export interface SocialProfileData {
+  url?: string;
+  username?: string;
+  displayName?: string;
+  followers?: string | number;
+  following?: string | number;
+  posts?: string | number;
+  bio?: string;
+  isVerified?: boolean;
+  isPrivate?: boolean;
+  lastActivity?: string;
+  externalUrl?: string;
+  category?: string;
+  qualityScore?: number;
+  qualityStatus?: string;
+}
+
 export interface PromptVariables {
   BUSINESS_NAME: string;
   CITY: string;
@@ -13,12 +30,16 @@ export interface PromptVariables {
   SNAP_URL?: string;
   YT_URL?: string;
   LI_URL?: string;
+  FB_URL?: string;
   PHONE?: string;
   EMAIL?: string;
   ADDRESS?: string;
   LICENSE_OR_CR?: string;
   GOAL_HINT?: string;
   EXTRA_CONSTRAINTS?: string;
+  // بيانات السوشيال المفصلة
+  SOCIAL_PROFILES_DATA?: string;
+  SOCIAL_SUMMARY?: string;
 }
 
 @Injectable()
@@ -58,6 +79,10 @@ export class PromptTemplateService {
   }): PromptVariables {
     const metadata = lead.metadata || {};
 
+    // بناء بيانات السوشيال المفصلة
+    const socialProfiles = metadata.socialProfiles || {};
+    const socialSummary = metadata.socialSummary || {};
+
     return {
       BUSINESS_NAME: lead.companyName,
       CITY: lead.city || '',
@@ -71,13 +96,140 @@ export class PromptTemplateService {
       SNAP_URL: metadata.snapchat || '',
       YT_URL: metadata.youtube || '',
       LI_URL: metadata.linkedin || '',
+      FB_URL: metadata.facebook || '',
       PHONE: lead.phone || '',
       EMAIL: lead.email || '',
       ADDRESS: lead.address || '',
       LICENSE_OR_CR: metadata.licenseNumber || '',
       GOAL_HINT: '',
       EXTRA_CONSTRAINTS: '',
+      SOCIAL_PROFILES_DATA: this.formatSocialProfilesData(socialProfiles),
+      SOCIAL_SUMMARY: this.formatSocialSummary(socialSummary),
     };
+  }
+
+  /**
+   * Format social profiles data for the prompt
+   */
+  private formatSocialProfilesData(profiles: Record<string, any>): string {
+    if (!profiles || Object.keys(profiles).length === 0) {
+      return '';
+    }
+
+    const platformNames: Record<string, string> = {
+      instagram: 'انستقرام',
+      twitter: 'تويتر/X',
+      facebook: 'فيسبوك',
+      linkedin: 'لينكدإن',
+      tiktok: 'تيك توك',
+      youtube: 'يوتيوب',
+      snapchat: 'سناب شات',
+    };
+
+    let result = '=== بيانات حسابات التواصل الاجتماعي (مستخرجة فعلياً) ===\n\n';
+
+    for (const [platform, data] of Object.entries(profiles)) {
+      if (!data || data.error) continue;
+
+      const name = platformNames[platform] || platform;
+      result += `📱 ${name}:\n`;
+      
+      if (data.username) result += `   - اسم المستخدم: ${data.username}\n`;
+      if (data.displayName) result += `   - الاسم المعروض: ${data.displayName}\n`;
+      if (data.followers) result += `   - المتابعين: ${data.followers}\n`;
+      if (data.following) result += `   - يتابع: ${data.following}\n`;
+      if (data.posts || data.videos || data.tweets) {
+        result += `   - المنشورات: ${data.posts || data.videos || data.tweets}\n`;
+      }
+      if (data.bio || data.description || data.about) {
+        const bio = (data.bio || data.description || data.about).substring(0, 200);
+        result += `   - الوصف: ${bio}\n`;
+      }
+      if (data.isVerified !== undefined) {
+        result += `   - موثق: ${data.isVerified ? 'نعم ✓' : 'لا'}\n`;
+      }
+      if (data.isPrivate !== undefined) {
+        result += `   - خاص: ${data.isPrivate ? 'نعم' : 'لا (عام)'}\n`;
+      }
+      if (data.website || data.externalUrl) {
+        result += `   - رابط خارجي: ${data.website || data.externalUrl}\n`;
+      }
+      if (data.category) result += `   - التصنيف: ${data.category}\n`;
+      if (data.location) result += `   - الموقع: ${data.location}\n`;
+      if (data.joinDate) result += `   - تاريخ الانضمام: ${data.joinDate}\n`;
+      
+      // تحليل الجودة
+      if (data.analysis) {
+        result += `   - تقييم الجودة: ${data.analysis.score}/100 (${this.getStatusAr(data.analysis.status)})\n`;
+        if (data.analysis.issues?.length > 0) {
+          result += `   - مشاكل: ${data.analysis.issues.slice(0, 3).join('، ')}\n`;
+        }
+      }
+
+      // المنشورات الأخيرة
+      const recentContent = data.recentPosts || data.recentTweets || data.recentVideos || [];
+      if (recentContent.length > 0) {
+        result += `   - آخر نشاط: ${recentContent.length} منشورات حديثة\n`;
+      }
+
+      result += '\n';
+    }
+
+    return result;
+  }
+
+  /**
+   * Format social summary for the prompt
+   */
+  private formatSocialSummary(summary: any): string {
+    if (!summary || !summary.totalPlatforms) {
+      return '';
+    }
+
+    let result = '=== ملخص الحضور على السوشيال ميديا ===\n\n';
+    
+    result += `📊 إجمالي المنصات: ${summary.totalPlatforms}\n`;
+    result += `✅ المنصات النشطة: ${summary.activePlatforms || 0}\n`;
+    result += `👥 إجمالي المتابعين: ${summary.totalFollowers?.toLocaleString() || 0}\n`;
+    result += `✓ حسابات موثقة: ${summary.verifiedAccounts || 0}\n`;
+    result += `⭐ التقييم العام: ${summary.overallScore || 0}/100\n`;
+    
+    if (summary.bestPlatform) {
+      result += `🏆 أفضل منصة: ${summary.bestPlatform}\n`;
+    }
+    if (summary.worstPlatform && summary.worstPlatform !== summary.bestPlatform) {
+      result += `⚠️ أضعف منصة: ${summary.worstPlatform}\n`;
+    }
+
+    if (summary.topIssues?.length > 0) {
+      result += `\n❌ أبرز المشاكل:\n`;
+      summary.topIssues.slice(0, 5).forEach((issue: string) => {
+        result += `   - ${issue}\n`;
+      });
+    }
+
+    if (summary.topRecommendations?.length > 0) {
+      result += `\n💡 أبرز التوصيات:\n`;
+      summary.topRecommendations.slice(0, 5).forEach((rec: string) => {
+        result += `   - ${rec}\n`;
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Get Arabic status label
+   */
+  private getStatusAr(status: string): string {
+    const statusMap: Record<string, string> = {
+      'EXCELLENT': 'ممتاز',
+      'GOOD': 'جيد',
+      'NEEDS_IMPROVEMENT': 'يحتاج تحسين',
+      'POOR': 'ضعيف',
+      'UNKNOWN': 'غير محدد',
+    };
+    return statusMap[status] || status;
   }
 
   /**
@@ -256,12 +408,17 @@ F) Compliance (حسب القطاع): تراخيص/شفافية/بيانات ات
 - Snapchat: {{SNAP_URL}}
 - YouTube: {{YT_URL}}
 - LinkedIn: {{LI_URL}}
+- Facebook: {{FB_URL}}
 
 معرفات تساعد التحقق (اختياري):
 - رقم هاتف: {{PHONE}}
 - بريد: {{EMAIL}}
 - عنوان/حي: {{ADDRESS}}
 - رقم ترخيص/سجل/فال (إن وجد): {{LICENSE_OR_CR}}
+
+{{SOCIAL_PROFILES_DATA}}
+
+{{SOCIAL_SUMMARY}}
 
 هدفنا كـ OP-Target (اختياري): 
 {{GOAL_HINT}}
@@ -271,6 +428,8 @@ F) Compliance (حسب القطاع): تراخيص/شفافية/بيانات ات
 
 ملاحظة مهمة:
 - لو ظهر تشابه أسماء، طبّق Disambiguation Mode ولا تختار كيان بدون أدلة قوية.
-- أريد النتائج مرتبة بالأولوية المنطقية، وليست قائمة عشوائية.`;
+- أريد النتائج مرتبة بالأولوية المنطقية، وليست قائمة عشوائية.
+- استخدم بيانات السوشيال المستخرجة أعلاه كأدلة موثوقة (تم استخراجها فعلياً من الصفحات).
+- حلل جودة الحسابات وقدم توصيات محددة لتحسينها.`;
   }
 }
