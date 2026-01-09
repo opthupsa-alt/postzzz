@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { CreditCard, MoreVertical, CheckCircle, XCircle, AlertCircle, Building2 } from 'lucide-react';
+import { CreditCard, MoreVertical, CheckCircle, XCircle, AlertCircle, Building2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getSubscriptions, cancelSubscription, Subscription } from '../../lib/api';
 import { showToast } from '../../components/NotificationToast';
+
+const ITEMS_PER_PAGE = 10;
 
 const AdminSubscriptions: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -9,12 +11,18 @@ const AdminSubscriptions: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
   const [showOptionsId, setShowOptionsId] = useState<string | null>(null);
 
   const loadSubscriptions = async () => {
     try {
       setLoading(true);
-      const data = await getSubscriptions({ status: filter || undefined });
+      const data = await getSubscriptions({ 
+        status: filter || undefined,
+        limit: ITEMS_PER_PAGE,
+        offset: (page - 1) * ITEMS_PER_PAGE,
+      });
       setSubscriptions(data.subscriptions);
       setTotal(data.total);
     } catch (err: any) {
@@ -26,7 +34,17 @@ const AdminSubscriptions: React.FC = () => {
 
   useEffect(() => {
     loadSubscriptions();
-  }, [filter]);
+  }, [filter, page]);
+
+  // Client-side search filter
+  const filteredSubscriptions = searchQuery
+    ? subscriptions.filter(s =>
+        s.tenant?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.plan?.nameAr?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : subscriptions;
+
+  const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
 
   const handleCancel = async (tenantId: string, tenantName: string) => {
     if (!confirm(`هل أنت متأكد من إلغاء اشتراك "${tenantName}"؟`)) return;
@@ -63,23 +81,37 @@ const AdminSubscriptions: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-gray-900">إدارة الاشتراكات</h1>
           <p className="text-gray-500 font-medium">إجمالي {total} اشتراك</p>
         </div>
-        <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="bg-white border border-gray-200 rounded-xl px-4 py-2 font-bold text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-        >
-          <option value="">جميع الحالات</option>
-          <option value="ACTIVE">نشط</option>
-          <option value="TRIALING">تجريبي</option>
-          <option value="PAST_DUE">متأخر</option>
-          <option value="CANCELLED">ملغي</option>
-          <option value="EXPIRED">منتهي</option>
-        </select>
+        <div className="flex items-center gap-3">
+          {/* Search */}
+          <div className="relative">
+            <Search size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="بحث بالمنظمة أو الباقة..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-white border border-gray-200 rounded-xl pr-10 pl-4 py-2 font-medium text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-56"
+            />
+          </div>
+          {/* Filter */}
+          <select
+            value={filter}
+            onChange={(e) => { setFilter(e.target.value); setPage(1); }}
+            className="bg-white border border-gray-200 rounded-xl px-4 py-2 font-bold text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="">جميع الحالات</option>
+            <option value="ACTIVE">نشط</option>
+            <option value="TRIALING">تجريبي</option>
+            <option value="PAST_DUE">متأخر</option>
+            <option value="CANCELLED">ملغي</option>
+            <option value="EXPIRED">منتهي</option>
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -106,7 +138,7 @@ const AdminSubscriptions: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {subscriptions.map((sub) => {
+              {filteredSubscriptions.map((sub) => {
                 const status = statusColors[sub.status] || statusColors.ACTIVE;
                 return (
                   <tr key={sub.id} className="hover:bg-gray-50 transition-colors">
@@ -169,6 +201,39 @@ const AdminSubscriptions: React.FC = () => {
               })}
             </tbody>
           </table>
+          {filteredSubscriptions.length === 0 && (
+            <div className="text-center py-12 text-gray-400">
+              لا توجد اشتراكات مطابقة
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 p-4">
+          <p className="text-sm text-gray-500">
+            عرض {((page - 1) * ITEMS_PER_PAGE) + 1} - {Math.min(page * ITEMS_PER_PAGE, total)} من {total}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight size={18} />
+            </button>
+            <span className="px-4 py-2 font-bold text-gray-700">
+              {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft size={18} />
+            </button>
+          </div>
         </div>
       )}
     </div>

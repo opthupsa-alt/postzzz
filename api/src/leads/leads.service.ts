@@ -109,4 +109,55 @@ export class LeadsService {
 
     return this.prisma.lead.count({ where });
   }
+
+  async getDashboardStats(tenantId: string) {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [
+      totalLeads,
+      leadsToday,
+      leadsThisWeek,
+      leadsThisMonth,
+      leadsByStatus,
+      recentLeads,
+    ] = await Promise.all([
+      this.prisma.lead.count({ where: { tenantId } }),
+      this.prisma.lead.count({ where: { tenantId, createdAt: { gte: startOfToday } } }),
+      this.prisma.lead.count({ where: { tenantId, createdAt: { gte: startOfWeek } } }),
+      this.prisma.lead.count({ where: { tenantId, createdAt: { gte: startOfMonth } } }),
+      this.prisma.lead.groupBy({
+        by: ['status'],
+        where: { tenantId },
+        _count: { status: true },
+      }),
+      this.prisma.lead.findMany({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          companyName: true,
+          status: true,
+          city: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    return {
+      totalLeads,
+      leadsToday,
+      leadsThisWeek,
+      leadsThisMonth,
+      byStatus: leadsByStatus.map((s) => ({
+        status: s.status,
+        count: s._count.status,
+      })),
+      recentLeads,
+    };
+  }
 }

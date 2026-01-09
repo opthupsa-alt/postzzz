@@ -18,6 +18,8 @@ export class AdminService {
       activeUsers,
       totalLeads,
       totalJobs,
+      recentTenants,
+      recentUsers,
     ] = await Promise.all([
       this.prisma.tenant.count(),
       this.prisma.tenant.count({ where: { status: 'ACTIVE' } }),
@@ -26,6 +28,32 @@ export class AdminService {
       this.prisma.user.count({ where: { isActive: true } }),
       this.prisma.lead.count(),
       this.prisma.job.count(),
+      // أحدث 5 منظمات
+      this.prisma.tenant.findMany({
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          status: true,
+          createdAt: true,
+          _count: { select: { users: true, leads: true } },
+        },
+      }),
+      // أحدث 5 مستخدمين
+      this.prisma.user.findMany({
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          isActive: true,
+          isSuperAdmin: true,
+          createdAt: true,
+        },
+      }),
     ]);
 
     return {
@@ -40,6 +68,23 @@ export class AdminService {
       },
       leads: totalLeads,
       jobs: totalJobs,
+      recentTenants: recentTenants.map(t => ({
+        id: t.id,
+        name: t.name,
+        slug: t.slug,
+        status: t.status,
+        createdAt: t.createdAt,
+        usersCount: t._count.users,
+        leadsCount: t._count.leads,
+      })),
+      recentUsers: recentUsers.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        isActive: u.isActive,
+        isSuperAdmin: u.isSuperAdmin,
+        createdAt: u.createdAt,
+      })),
     };
   }
 
@@ -314,5 +359,360 @@ export class AdminService {
       searchMethod: settings.searchMethod,
       // Don't expose sensitive fields like googleApiKey
     };
+  }
+
+  // ==================== Plans Management ====================
+
+  async createPlan(dto: {
+    name: string;
+    nameAr: string;
+    price: number;
+    yearlyPrice?: number;
+    seatsLimit: number;
+    leadsLimit: number;
+    searchesLimit: number;
+    messagesLimit: number;
+    isActive?: boolean;
+  }) {
+    return this.prisma.plan.create({
+      data: {
+        name: dto.name,
+        nameAr: dto.nameAr,
+        price: dto.price,
+        yearlyPrice: dto.yearlyPrice || 0,
+        seatsLimit: dto.seatsLimit,
+        leadsLimit: dto.leadsLimit,
+        searchesLimit: dto.searchesLimit,
+        messagesLimit: dto.messagesLimit,
+        isActive: dto.isActive ?? true,
+      },
+    });
+  }
+
+  async updatePlan(id: string, dto: {
+    name?: string;
+    nameAr?: string;
+    price?: number;
+    yearlyPrice?: number;
+    seatsLimit?: number;
+    leadsLimit?: number;
+    searchesLimit?: number;
+    messagesLimit?: number;
+    isActive?: boolean;
+  }) {
+    const plan = await this.prisma.plan.findUnique({ where: { id } });
+
+    if (!plan) {
+      throw new NotFoundException('Plan not found');
+    }
+
+    const data: any = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.nameAr !== undefined) data.nameAr = dto.nameAr;
+    if (dto.price !== undefined) data.price = dto.price;
+    if (dto.yearlyPrice !== undefined) data.yearlyPrice = dto.yearlyPrice;
+    if (dto.seatsLimit !== undefined) data.seatsLimit = dto.seatsLimit;
+    if (dto.leadsLimit !== undefined) data.leadsLimit = dto.leadsLimit;
+    if (dto.searchesLimit !== undefined) data.searchesLimit = dto.searchesLimit;
+    if (dto.messagesLimit !== undefined) data.messagesLimit = dto.messagesLimit;
+    if (dto.isActive !== undefined) data.isActive = dto.isActive;
+
+    return this.prisma.plan.update({
+      where: { id },
+      data,
+    });
+  }
+
+  // ==================== Data Bank (All Platform Leads) ====================
+
+  async getDataBankStats() {
+    const [
+      totalLeads,
+      leadsByStatus,
+      leadsBySource,
+      leadsByTenant,
+      leadsToday,
+      leadsThisWeek,
+      leadsThisMonth,
+    ] = await Promise.all([
+      this.prisma.lead.count(),
+      this.prisma.lead.groupBy({
+        by: ['status'],
+        _count: { id: true },
+      }),
+      this.prisma.lead.groupBy({
+        by: ['source'],
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 10,
+      }),
+      this.prisma.lead.groupBy({
+        by: ['tenantId'],
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 10,
+      }),
+      this.prisma.lead.count({
+        where: {
+          createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+        },
+      }),
+      this.prisma.lead.count({
+        where: {
+          createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        },
+      }),
+      this.prisma.lead.count({
+        where: {
+          createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        },
+      }),
+    ]);
+
+    // Get tenant names for the top tenants
+    const tenantIds = leadsByTenant.map((t) => t.tenantId);
+    const tenants = await this.prisma.tenant.findMany({
+      where: { id: { in: tenantIds } },
+      select: { id: true, name: true },
+    });
+    const tenantMap = new Map(tenants.map((t) => [t.id, t.name]));
+
+    return {
+      totalLeads,
+      leadsToday,
+      leadsThisWeek,
+      leadsThisMonth,
+      byStatus: leadsByStatus.map((s) => ({
+        status: s.status,
+        count: s._count.id,
+      })),
+      bySource: leadsBySource.map((s) => ({
+        source: s.source || 'غير محدد',
+        count: s._count.id,
+      })),
+      byTenant: leadsByTenant.map((t) => ({
+        tenantId: t.tenantId,
+        tenantName: tenantMap.get(t.tenantId) || 'غير معروف',
+        count: t._count.id,
+      })),
+    };
+  }
+
+  async getDataBankLeads(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    tenantId?: string;
+    status?: string;
+    source?: string;
+    city?: string;
+    industry?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  }) {
+    const where: any = {};
+
+    // Search filter
+    if (options?.search) {
+      where.OR = [
+        { companyName: { contains: options.search, mode: 'insensitive' } },
+        { email: { contains: options.search, mode: 'insensitive' } },
+        { phone: { contains: options.search, mode: 'insensitive' } },
+        { city: { contains: options.search, mode: 'insensitive' } },
+      ];
+    }
+
+    // Tenant filter
+    if (options?.tenantId) {
+      where.tenantId = options.tenantId;
+    }
+
+    // Status filter
+    if (options?.status) {
+      where.status = options.status;
+    }
+
+    // Source filter
+    if (options?.source) {
+      where.source = options.source;
+    }
+
+    // City filter
+    if (options?.city) {
+      where.city = { contains: options.city, mode: 'insensitive' };
+    }
+
+    // Industry filter
+    if (options?.industry) {
+      where.industry = { contains: options.industry, mode: 'insensitive' };
+    }
+
+    // Date range filter
+    if (options?.dateFrom || options?.dateTo) {
+      where.createdAt = {};
+      if (options?.dateFrom) {
+        where.createdAt.gte = new Date(options.dateFrom);
+      }
+      if (options?.dateTo) {
+        where.createdAt.lte = new Date(options.dateTo);
+      }
+    }
+
+    // Sorting
+    const orderBy: any = {};
+    const sortField = options?.sortBy || 'createdAt';
+    const sortOrder = options?.sortOrder || 'desc';
+    orderBy[sortField] = sortOrder;
+
+    const [leads, total] = await Promise.all([
+      this.prisma.lead.findMany({
+        where,
+        orderBy,
+        take: options?.limit || 50,
+        skip: options?.offset || 0,
+        include: {
+          tenant: {
+            select: { id: true, name: true, slug: true },
+          },
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+      }),
+      this.prisma.lead.count({ where }),
+    ]);
+
+    return { leads, total };
+  }
+
+  async getDataBankLead(id: string) {
+    const lead = await this.prisma.lead.findUnique({
+      where: { id },
+      include: {
+        tenant: {
+          select: { id: true, name: true, slug: true },
+        },
+        createdBy: {
+          select: { id: true, name: true, email: true },
+        },
+        job: {
+          select: { id: true, type: true, status: true, createdAt: true },
+        },
+        lists: {
+          include: {
+            list: {
+              select: { id: true, name: true, color: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!lead) {
+      throw new NotFoundException('Lead not found');
+    }
+
+    return lead;
+  }
+
+  async getDataBankFilters() {
+    const [sources, cities, industries, tenants] = await Promise.all([
+      this.prisma.lead.groupBy({
+        by: ['source'],
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+      }),
+      this.prisma.lead.groupBy({
+        by: ['city'],
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 50,
+      }),
+      this.prisma.lead.groupBy({
+        by: ['industry'],
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 50,
+      }),
+      this.prisma.tenant.findMany({
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    return {
+      sources: sources
+        .filter((s) => s.source)
+        .map((s) => ({ value: s.source!, label: s.source!, count: s._count.id })),
+      cities: cities
+        .filter((c) => c.city)
+        .map((c) => ({ value: c.city!, label: c.city!, count: c._count.id })),
+      industries: industries
+        .filter((i) => i.industry)
+        .map((i) => ({ value: i.industry!, label: i.industry!, count: i._count.id })),
+      tenants: tenants.map((t) => ({ value: t.id, label: t.name })),
+      statuses: [
+        { value: 'NEW', label: 'جديد' },
+        { value: 'CONTACTED', label: 'تم التواصل' },
+        { value: 'QUALIFIED', label: 'مؤهل' },
+        { value: 'PROPOSAL', label: 'عرض سعر' },
+        { value: 'NEGOTIATION', label: 'تفاوض' },
+        { value: 'WON', label: 'تم الفوز' },
+        { value: 'LOST', label: 'خسارة' },
+      ],
+    };
+  }
+
+  async exportDataBankLeads(options?: {
+    tenantId?: string;
+    status?: string;
+    source?: string;
+    city?: string;
+    industry?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) {
+    const where: any = {};
+
+    if (options?.tenantId) where.tenantId = options.tenantId;
+    if (options?.status) where.status = options.status;
+    if (options?.source) where.source = options.source;
+    if (options?.city) where.city = { contains: options.city, mode: 'insensitive' };
+    if (options?.industry) where.industry = { contains: options.industry, mode: 'insensitive' };
+
+    if (options?.dateFrom || options?.dateTo) {
+      where.createdAt = {};
+      if (options?.dateFrom) where.createdAt.gte = new Date(options.dateFrom);
+      if (options?.dateTo) where.createdAt.lte = new Date(options.dateTo);
+    }
+
+    const leads = await this.prisma.lead.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        tenant: { select: { name: true } },
+        createdBy: { select: { name: true, email: true } },
+      },
+    });
+
+    return leads.map((lead) => ({
+      id: lead.id,
+      companyName: lead.companyName,
+      industry: lead.industry || '',
+      city: lead.city || '',
+      address: lead.address || '',
+      phone: lead.phone || '',
+      email: lead.email || '',
+      website: lead.website || '',
+      status: lead.status,
+      source: lead.source || '',
+      notes: lead.notes || '',
+      tenantName: lead.tenant.name,
+      createdByName: lead.createdBy.name,
+      createdByEmail: lead.createdBy.email,
+      createdAt: lead.createdAt.toISOString(),
+    }));
   }
 }

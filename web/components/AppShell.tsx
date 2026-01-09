@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Search, Users, ListTodo, MessageSquare, 
   Settings, LogOut, Bell, Zap, ShieldAlert, Menu, X, 
   Smartphone, ShieldCheck, Grid, Globe, Check, Trash2, Clock,
-  Command, Search as SearchIcon, Activity, Database, AlertCircle
+  Command, Search as SearchIcon, Activity, Database, AlertCircle, Puzzle
 } from 'lucide-react';
 import JobProgressWidget from './JobProgressWidget';
 import NotificationToast from './NotificationToast';
@@ -136,6 +136,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <p className="px-4 mb-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">إدارة الفريق</p>
               <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/team" icon={ShieldCheck} label="الفريق والنشاط" active={location.pathname === '/app/team'} />
               <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/integrations" icon={Grid} label="التكاملات" active={location.pathname === '/app/integrations'} />
+              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/extension-settings" icon={Puzzle} label="إعدادات الإضافة" active={location.pathname === '/app/extension-settings'} />
               <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/audit-logs" icon={ShieldAlert} label="سجل الرقابة" active={location.pathname === '/app/audit-logs'} />
             </div>
           </nav>

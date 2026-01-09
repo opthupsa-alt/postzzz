@@ -17,6 +17,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { AgentModule } from './agent/agent.module';
 import { AuditModule } from './audit/audit.module';
+import { ExtensionSettingsModule } from './extension-settings/extension-settings.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { AuditModule } from './audit/audit.module';
     SubscriptionsModule,
     GatewayModule,
     AgentModule,
+    ExtensionSettingsModule,
   ],
 })
 export class AppModule {}

@@ -1,0 +1,25 @@
+{
+  "_comment": "مصدر الحقيقة الواحد - Single Source of Truth",
+  "_description": "انسخ هذا الملف إلى config.local.json وعدّل القيم حسب حاجتك",
+  "_lastUpdate": "2026-01-08",
+  
+  "ports": {
+    "api": 3001,
+    "web": 3000
+  },
+  
+  "urls": {
+    "api": "http://localhost:3001",
+    "web": "http://localhost:3000"
+  },
+  
+  "database": {
+    "_note": "قاعدة البيانات ثابتة - لا تغيّر هذه القيم إلا إذا كنت تستخدم قاعدة بيانات مختلفة",
+    "useEnvFile": true
+  },
+  
+  "extension": {
+    "debugMode": false,
+    "showSearchWindow": false
+  }
+}

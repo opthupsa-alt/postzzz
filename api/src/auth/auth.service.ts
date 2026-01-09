@@ -111,7 +111,22 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Get default or first tenant
+    // Super Admin login - no tenant required
+    if (user.isSuperAdmin) {
+      const token = this.generateToken(user, 'PLATFORM', 'SUPER_ADMIN');
+      
+      this.logger.log(`Super Admin login: ${user.email}`);
+      
+      return {
+        user: this.sanitizeUser(user),
+        tenant: null,
+        tenantId: null,
+        role: 'SUPER_ADMIN',
+        token,
+      };
+    }
+
+    // Regular user login - requires tenant membership
     const membership =
       user.memberships.find((m) => m.tenantId === user.defaultTenantId) ||
       user.memberships[0];
@@ -136,6 +151,7 @@ export class AuthService {
     return {
       user: this.sanitizeUser(user),
       tenant: membership.tenant,
+      tenantId: membership.tenantId,
       role: membership.role,
       token,
     };
@@ -200,12 +216,13 @@ export class AuthService {
     return this.jwtService.sign(payload);
   }
 
-  private sanitizeUser(user: { id: string; email: string; name: string; avatarUrl?: string | null }) {
+  private sanitizeUser(user: { id: string; email: string; name: string; avatarUrl?: string | null; isSuperAdmin?: boolean }) {
     return {
       id: user.id,
       email: user.email,
       name: user.name,
       avatarUrl: user.avatarUrl,
+      isSuperAdmin: user.isSuperAdmin || false,
     };
   }
 

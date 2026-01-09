@@ -3,6 +3,13 @@
  * Extension receives commands from platform via WebSocket - no local search UI
  */
 
+// ==================== Configuration ====================
+// يتم تحميل الإعدادات من config.js (يُولَّد من config.local.json)
+const CONFIG = typeof LEEDZ_CONFIG !== 'undefined' ? LEEDZ_CONFIG : {
+  API_URL: 'http://localhost:3001',
+  WEB_URL: 'http://localhost:3000'
+};
+
 // ==================== DOM Elements ====================
 
 const loadingContainer = document.getElementById('loadingContainer');
@@ -38,7 +45,7 @@ const resultsList = document.getElementById('resultsList');
 let isLoading = false;
 let platformConfig = null;
 let currentJob = null;
-let currentSearchType = 'BULK'; // 'SINGLE' or 'BULK'
+let extensionSettings = null;
 
 // ==================== Helpers ====================
 
@@ -317,73 +324,63 @@ async function handleOpenPlatform() {
   await sendMessage({ type: 'OPEN_PLATFORM' });
 }
 
-function updateSearchTypeUI() {
-  const singleBtn = document.getElementById('searchTypeSingle');
-  const bulkBtn = document.getElementById('searchTypeBulk');
-  const testQuery = document.getElementById('testQuery');
+// تحديث حالة طبقات البحث
+function updateLayersStatus(settings) {
+  const layerMaps = document.getElementById('layerGoogleMaps');
+  const layerSearch = document.getElementById('layerGoogleSearch');
+  const layerSocial = document.getElementById('layerSocialMedia');
   
-  if (currentSearchType === 'SINGLE') {
-    singleBtn.style.border = '2px solid #3b82f6';
-    singleBtn.style.background = '#eff6ff';
-    singleBtn.style.color = '#1d4ed8';
-    bulkBtn.style.border = '2px solid #e2e8f0';
-    bulkBtn.style.background = 'white';
-    bulkBtn.style.color = 'inherit';
-    testQuery.placeholder = 'اسم الشركة (مثال: شركة الحلول الذكية)';
-  } else {
-    bulkBtn.style.border = '2px solid #3b82f6';
-    bulkBtn.style.background = '#eff6ff';
-    bulkBtn.style.color = '#1d4ed8';
-    singleBtn.style.border = '2px solid #e2e8f0';
-    singleBtn.style.background = 'white';
-    singleBtn.style.color = 'inherit';
-    testQuery.placeholder = 'النشاط (مثال: مطاعم)';
+  if (layerMaps) {
+    layerMaps.className = 'layer-badge ' + (settings?.enableGoogleMaps !== false ? 'active' : '');
+  }
+  if (layerSearch) {
+    layerSearch.className = 'layer-badge ' + (settings?.enableGoogleSearch !== false ? 'active' : '');
+  }
+  if (layerSocial) {
+    layerSocial.className = 'layer-badge ' + (settings?.enableSocialMedia ? 'active' : '');
   }
 }
 
-async function handleTestSearch() {
-  const testQuery = document.getElementById('testQuery');
-  const testCity = document.getElementById('testCity');
-  const testSearchBtn = document.getElementById('testSearchBtn');
+// تحديث حالة الإضافة
+function updateExtensionStatus(status, message) {
+  const icon = document.getElementById('extensionStatusIcon');
+  const text = document.getElementById('extensionStatusText');
   
-  const query = testQuery.value.trim();
-  const city = testCity.value.trim();
+  if (!icon || !text) return;
   
-  if (!query || !city) {
-    alert('يرجى إدخال ' + (currentSearchType === 'SINGLE' ? 'اسم الشركة' : 'النشاط') + ' والمدينة');
-    return;
+  switch (status) {
+    case 'ready':
+      icon.textContent = '✅';
+      text.textContent = message || 'جاهز للعمل';
+      text.style.color = '#16a34a';
+      break;
+    case 'busy':
+      icon.textContent = '⏳';
+      text.textContent = message || 'جاري العمل...';
+      text.style.color = '#d97706';
+      break;
+    case 'error':
+      icon.textContent = '❌';
+      text.textContent = message || 'خطأ';
+      text.style.color = '#dc2626';
+      break;
+    default:
+      icon.textContent = '⚡';
+      text.textContent = message || 'غير معروف';
+      text.style.color = '#64748b';
   }
-  
-  testSearchBtn.disabled = true;
-  testSearchBtn.textContent = '⏳ جاري البحث...';
-  
+}
+
+// تحميل الإعدادات
+async function loadExtensionSettings() {
   try {
-    // Send test search command to background
-    const result = await sendMessage({
-      type: 'TEST_SEARCH',
-      query,
-      city,
-      country: 'السعودية',
-      searchType: currentSearchType,
-    });
-    
-    console.log('[Leedz] Test search result:', result);
-    
-    if (result?.success) {
-      testSearchBtn.textContent = '✅ تم البحث بنجاح!';
-    } else {
-      testSearchBtn.textContent = '❌ فشل البحث';
-      alert('فشل البحث: ' + (result?.error || 'خطأ غير معروف'));
+    const result = await sendMessage({ type: 'GET_SETTINGS' });
+    if (result?.settings) {
+      extensionSettings = result.settings;
+      updateLayersStatus(extensionSettings);
     }
   } catch (error) {
-    console.error('[Leedz] Test search error:', error);
-    testSearchBtn.textContent = '❌ خطأ';
-    alert('خطأ: ' + error.message);
-  } finally {
-    setTimeout(() => {
-      testSearchBtn.disabled = false;
-      testSearchBtn.textContent = '🚀 بدء البحث التجريبي';
-    }, 2000);
+    console.error('[Leedz] Failed to load settings:', error);
   }
 }
 
@@ -393,19 +390,38 @@ loginForm.addEventListener('submit', handleLogin);
 logoutBtn.addEventListener('click', handleLogout);
 autoLoginBtn?.addEventListener('click', handleAutoLogin);
 openPlatformBtn?.addEventListener('click', handleOpenPlatform);
-document.getElementById('testSearchBtn')?.addEventListener('click', handleTestSearch);
 
-// Search type toggle buttons
-document.getElementById('searchTypeSingle')?.addEventListener('click', () => {
-  currentSearchType = 'SINGLE';
-  updateSearchTypeUI();
+// Settings button
+document.getElementById('settingsBtn')?.addEventListener('click', () => {
+  chrome.runtime.openOptionsPage();
 });
-document.getElementById('searchTypeBulk')?.addEventListener('click', () => {
-  currentSearchType = 'BULK';
-  updateSearchTypeUI();
+
+// Listen for messages from background
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'JOB_PROGRESS') {
+    updateExtensionStatus('busy', message.message);
+    if (jobProgressBar) {
+      jobProgressBar.style.width = (message.progress || 0) + '%';
+    }
+    if (jobProgress) {
+      jobProgress.textContent = message.message || 'جاري التنفيذ...';
+    }
+    if (activeJobSection) {
+      activeJobSection.style.display = 'block';
+    }
+  } else if (message.type === 'JOB_COMPLETE') {
+    updateExtensionStatus('ready', 'اكتمل البحث');
+    if (activeJobSection) {
+      activeJobSection.style.display = 'none';
+    }
+  } else if (message.type === 'SETTINGS_UPDATED') {
+    extensionSettings = message.settings;
+    updateLayersStatus(extensionSettings);
+  }
 });
 
 // ==================== Initialize ====================
 
 checkAuth();
+loadExtensionSettings();
 console.log('[Leedz Extension] Side panel initialized - Command receiver mode');

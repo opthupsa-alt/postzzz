@@ -1,14 +1,14 @@
 import React from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Shield, LayoutDashboard, Building2, Users, CreditCard, Settings, ArrowLeft, LogOut } from 'lucide-react';
+import { NavLink, Outlet } from 'react-router-dom';
+import { Shield, LayoutDashboard, Building2, Users, CreditCard, Settings, LogOut, Database } from 'lucide-react';
+import { logout } from '../lib/api';
 
 const AdminLayout: React.FC = () => {
-  const navigate = useNavigate();
-
   const navItems = [
     { to: '/admin', icon: LayoutDashboard, label: 'لوحة التحكم', end: true },
     { to: '/admin/tenants', icon: Building2, label: 'المنظمات' },
     { to: '/admin/users', icon: Users, label: 'المستخدمين' },
+    { to: '/admin/data-bank', icon: Database, label: 'بنك البيانات' },
     { to: '/admin/plans', icon: CreditCard, label: 'الباقات' },
     { to: '/admin/subscriptions', icon: CreditCard, label: 'الاشتراكات' },
     { to: '/admin/settings', icon: Settings, label: 'الإعدادات' },
@@ -52,11 +52,11 @@ const AdminLayout: React.FC = () => {
 
         <div className="p-4 border-t border-gray-800 space-y-2">
           <button
-            onClick={() => navigate('/app/dashboard')}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-gray-300 hover:bg-gray-800 hover:text-white transition-all"
+            onClick={() => logout()}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-red-400 hover:bg-red-900/30 hover:text-red-300 transition-all"
           >
-            <ArrowLeft size={20} />
-            <span>العودة للمنصة</span>
+            <LogOut size={20} />
+            <span>تسجيل الخروج</span>
           </button>
         </div>
       </aside>

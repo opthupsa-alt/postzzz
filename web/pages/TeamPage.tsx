@@ -1,42 +1,66 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  Users, UserPlus, ShieldCheck, Mail, Smartphone, MoreVertical, 
-  Trash2, Shield, Activity, TrendingUp, Zap, LogIn, X, Check,
-  Target, BarChart3, Clock, MessageSquare, ChevronLeft, ArrowLeft,
-  // Added missing icons
+  Users, UserPlus, ShieldCheck, Mail, MoreVertical, 
+  Trash2, Shield, Activity, TrendingUp, Zap, X,
+  Clock, MessageSquare, ChevronLeft,
   Search, Filter, Loader2
 } from 'lucide-react';
-import { useStore } from '../store/useStore';
 import PageHeader from '../components/PageHeader';
 import Guard from '../components/Guard';
 import { showToast } from '../components/NotificationToast';
+import { getTeamMembers, createInvite, removeMember, TeamMember as ApiTeamMember } from '../lib/api';
 
 const TeamPage: React.FC = () => {
-  const { team, removeTeamMember, addTeamMember } = useStore();
+  const [team, setTeam] = useState<ApiTeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
   const [newMember, setNewMember] = useState({ email: '', role: 'SALES' });
   const [isInviting, setIsInviting] = useState(false);
 
-  const handleInvite = (e: React.FormEvent) => {
+  const loadTeam = async () => {
+    try {
+      setLoading(true);
+      const members = await getTeamMembers();
+      setTeam(members);
+    } catch (err: any) {
+      console.error('Failed to load team:', err);
+      showToast('ERROR', 'خطأ', 'فشل تحميل بيانات الفريق');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTeam();
+  }, []);
+
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMember.email) return;
     
     setIsInviting(true);
-    setTimeout(() => {
-        addTeamMember({
-          id: Math.random().toString(36).substr(2, 9),
-          name: newMember.email.split('@')[0],
-          email: newMember.email,
-          role: newMember.role as any,
-          status: 'OFFLINE',
-          joinedAt: new Date().toISOString()
-        });
-        setIsInviting(false);
-        setNewMember({ email: '', role: 'SALES' });
-        setShowInvite(false);
-        showToast('SUCCESS', 'تم إرسال الدعوة', 'سيصل العضو الجديد رابط تفعيل الحساب.');
-    }, 1500);
+    try {
+      await createInvite({ email: newMember.email, role: newMember.role });
+      setNewMember({ email: '', role: 'SALES' });
+      setShowInvite(false);
+      showToast('SUCCESS', 'تم إرسال الدعوة', 'سيصل العضو الجديد رابط تفعيل الحساب.');
+    } catch (err: any) {
+      showToast('ERROR', 'خطأ', err.message || 'فشل إرسال الدعوة');
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذا العضو؟')) return;
+    try {
+      await removeMember(userId);
+      setTeam(team.filter(m => m.userId !== userId));
+      showToast('SUCCESS', 'تم الحذف', 'تم حذف العضو بنجاح');
+    } catch (err: any) {
+      showToast('ERROR', 'خطأ', err.message || 'فشل حذف العضو');
+    }
   };
 
   return (
@@ -97,26 +121,36 @@ const TeamPage: React.FC = () => {
           </div>
 
           <div className="divide-y divide-gray-50">
-            {team.map((member) => (
+            {loading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="animate-spin text-blue-600" size={32} />
+              </div>
+            ) : team.length === 0 ? (
+              <div className="text-center py-20 text-gray-400">
+                <Users size={48} className="mx-auto mb-4 opacity-50" />
+                <p className="font-bold">لا يوجد أعضاء في الفريق</p>
+                <p className="text-sm">قم بدعوة أعضاء جدد للانضمام</p>
+              </div>
+            ) : team.map((member) => (
               <div key={member.id} className="p-8 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50/50 transition-all group gap-6">
                 <div className="flex items-center gap-6">
                   <div className="relative">
                     <div className="h-16 w-16 bg-white border border-gray-100 text-blue-600 rounded-[1.5rem] flex items-center justify-center font-black text-2xl shadow-sm group-hover:scale-110 transition-transform duration-500 ring-4 ring-transparent group-hover:ring-blue-50">
-                      {member.name[0]}
+                      {member.user?.name?.[0] || member.user?.email?.[0] || '?'}
                     </div>
-                    <span className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-4 border-white shadow-md ${member.status === 'ONLINE' ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+                    <span className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-4 border-white shadow-md ${member.user?.isActive ? 'bg-green-500' : 'bg-gray-300'}`}></span>
                   </div>
                   <div>
                     <div className="flex items-center gap-3">
-                      <p className="text-xl font-black text-gray-900 group-hover:text-blue-600 transition-colors">{member.name}</p>
-                      <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${member.role === 'ADMIN' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-gray-50 text-gray-500 border-gray-100'}`}>
-                        {member.role === 'ADMIN' ? 'مدير نظام' : 'مندوب مبيعات'}
+                      <p className="text-xl font-black text-gray-900 group-hover:text-blue-600 transition-colors">{member.user?.name || member.user?.email || 'غير معروف'}</p>
+                      <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${member.role === 'ADMIN' || member.role === 'OWNER' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-gray-50 text-gray-500 border-gray-100'}`}>
+                        {member.role === 'OWNER' ? 'مالك' : member.role === 'ADMIN' ? 'مدير نظام' : member.role === 'MANAGER' ? 'مدير فريق' : 'مندوب مبيعات'}
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-4 mt-2">
-                      <span className="text-xs text-gray-400 font-bold flex items-center gap-1.5"><Mail size={12} className="text-blue-400" /> {member.email}</span>
+                      <span className="text-xs text-gray-400 font-bold flex items-center gap-1.5"><Mail size={12} className="text-blue-400" /> {member.user?.email || '-'}</span>
                       <span className="text-gray-200">•</span>
-                      <span className="text-xs text-gray-400 font-bold flex items-center gap-1.5"><Clock size={12} className="text-blue-400" /> انضم: {new Date(member.joinedAt).toLocaleDateString('ar-SA')}</span>
+                      <span className="text-xs text-gray-400 font-bold flex items-center gap-1.5"><Clock size={12} className="text-blue-400" /> انضم: {new Date(member.createdAt).toLocaleDateString('ar-SA')}</span>
                     </div>
                   </div>
                 </div>
@@ -135,9 +169,9 @@ const TeamPage: React.FC = () => {
                    <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
                     <button className="p-3 bg-white text-gray-400 hover:text-blue-600 rounded-xl shadow-sm border border-gray-100 transition-all hover:border-blue-200" title="تعديل الصلاحيات"><Shield size={20} /></button>
                     <button className="p-3 bg-white text-gray-400 hover:text-orange-500 rounded-xl shadow-sm border border-gray-100 transition-all" title="سجل نشاط العضو"><Activity size={20} /></button>
-                    {member.role !== 'ADMIN' && (
+                    {member.role !== 'OWNER' && (
                         <button 
-                        onClick={() => { if(confirm('حذف هذا العضو؟')) removeTeamMember(member.id); }}
+                        onClick={() => handleRemoveMember(member.userId)}
                         className="p-3 bg-white text-red-400 hover:text-red-600 rounded-xl shadow-sm border border-gray-100 transition-all"
                         >
                         <Trash2 size={20} />

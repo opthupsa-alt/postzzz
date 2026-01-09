@@ -280,4 +280,51 @@ export class JobsService {
       },
     });
   }
+
+  async getDashboardStats(tenantId: string) {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+
+    const [
+      totalJobs,
+      jobsToday,
+      jobsThisWeek,
+      jobsByStatus,
+      recentJobs,
+    ] = await Promise.all([
+      this.prisma.job.count({ where: { tenantId } }),
+      this.prisma.job.count({ where: { tenantId, createdAt: { gte: startOfToday } } }),
+      this.prisma.job.count({ where: { tenantId, createdAt: { gte: startOfWeek } } }),
+      this.prisma.job.groupBy({
+        by: ['status'],
+        where: { tenantId },
+        _count: { status: true },
+      }),
+      this.prisma.job.findMany({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          type: true,
+          status: true,
+          progress: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    return {
+      totalJobs,
+      jobsToday,
+      jobsThisWeek,
+      byStatus: jobsByStatus.map((s) => ({
+        status: s.status,
+        count: s._count.status,
+      })),
+      recentJobs,
+    };
+  }
 }

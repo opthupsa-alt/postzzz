@@ -55,6 +55,7 @@ model User {
   memberships     Membership[]
   reports         Report[]
   defaultTenant   Tenant?      @relation(fields: [defaultTenantId], references: [id])
+  extensionSettings ExtensionSettings?
 
   @@map("users")
 }
@@ -400,7 +401,7 @@ model PlatformSettings {
   id          String   @id @default("default")
   
   // Platform URLs
-  platformUrl     String   @default("http://localhost:3002")  // Web app URL
+  platformUrl     String   @default("http://localhost:3000")  // Web app URL
   apiUrl          String   @default("http://localhost:3001")  // API URL
   
   // Search Settings
@@ -429,5 +430,38 @@ model PlatformSettings {
 enum SearchMethod {
   GOOGLE_MAPS_REAL   // Real browser search (no API)
   GOOGLE_MAPS_API    // Google Places API
+}
+
+// Extension Settings per User
+model ExtensionSettings {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Search Layers
+  enableGoogleMaps    Boolean @default(true)
+  enableGoogleSearch  Boolean @default(true)
+  enableSocialMedia   Boolean @default(false)
+  
+  // Match Settings
+  matchThreshold      Int     @default(90)  // Minimum match score (0-100)
+  
+  // Search Settings
+  maxResults          Int     @default(30)
+  searchDelay         Int     @default(3)   // Seconds between searches
+  
+  // Window Settings
+  showSearchWindow    Boolean @default(false)  // Show browser window during search
+  
+  // Social Media Platforms (JSON: { instagram: true, twitter: false, ... })
+  socialPlatforms     Json    @default("{}")
+  
+  // Debug
+  debugMode           Boolean @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("extension_settings")
 }
 

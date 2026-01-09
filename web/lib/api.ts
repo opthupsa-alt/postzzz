@@ -17,13 +17,18 @@ export interface User {
   name: string;
   avatarUrl?: string;
   defaultTenantId?: string;
+  isSuperAdmin?: boolean;
 }
 
 export interface AuthResponse {
   token: string;
   user: User;
   role: string;
-  tenantId: string;
+  tenantId: string | null;
+  tenant?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 export interface ApiError {
@@ -116,7 +121,11 @@ export async function login(email: string, password: string): Promise<AuthRespon
   
   setToken(data.token);
   setStoredUser(data.user);
-  setStoredTenant(data.tenantId, data.role);
+  
+  // Only set tenant for non-Super Admin users
+  if (data.tenantId) {
+    setStoredTenant(data.tenantId, data.role);
+  }
   
   return data;
 }
@@ -271,6 +280,41 @@ export async function getLeadsCount(status?: string): Promise<{ count: number }>
   return apiRequest(`/leads/count${query}`);
 }
 
+// Dashboard Stats API
+export interface DashboardStats {
+  leads: {
+    totalLeads: number;
+    leadsToday: number;
+    leadsThisWeek: number;
+    leadsThisMonth: number;
+    byStatus: { status: string; count: number }[];
+    recentLeads: { id: string; companyName: string; status: string; city?: string; createdAt: string }[];
+  };
+  jobs: {
+    totalJobs: number;
+    jobsToday: number;
+    jobsThisWeek: number;
+    byStatus: { status: string; count: number }[];
+    recentJobs: { id: string; type: string; status: string; progress: number; createdAt: string }[];
+  };
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  const [leads, jobs] = await Promise.all([
+    apiRequest<DashboardStats['leads']>('/leads/dashboard-stats'),
+    apiRequest<DashboardStats['jobs']>('/jobs/dashboard-stats'),
+  ]);
+  return { leads, jobs };
+}
+
+export async function getLeadsDashboardStats(): Promise<DashboardStats['leads']> {
+  return apiRequest('/leads/dashboard-stats');
+}
+
+export async function getJobsDashboardStats(): Promise<DashboardStats['jobs']> {
+  return apiRequest('/jobs/dashboard-stats');
+}
+
 // Lists API
 export interface List {
   id: string;
@@ -406,6 +450,93 @@ export async function getReportsCount(status?: string): Promise<{ count: number 
   return apiRequest(`/reports/count${query}`);
 }
 
+// ==================== Team API ====================
+
+export interface TeamMember {
+  id: string;
+  userId: string;
+  role: 'OWNER' | 'ADMIN' | 'MANAGER' | 'SALES';
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    avatarUrl?: string;
+    isActive: boolean;
+  };
+  createdAt: string;
+}
+
+export async function getTeamMembers(): Promise<TeamMember[]> {
+  return apiRequest('/users/team');
+}
+
+export async function updateMemberRole(userId: string, role: string): Promise<TeamMember> {
+  return apiRequest(`/users/${userId}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  });
+}
+
+export async function removeMember(userId: string): Promise<void> {
+  return apiRequest(`/users/${userId}`, {
+    method: 'DELETE',
+  });
+}
+
+// ==================== Invites API ====================
+
+export interface Invite {
+  id: string;
+  email: string;
+  role: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
+  expiresAt: string;
+  createdAt: string;
+}
+
+export async function getInvites(): Promise<Invite[]> {
+  return apiRequest('/invites');
+}
+
+export async function createInvite(data: { email: string; role: string }): Promise<Invite> {
+  return apiRequest('/invites', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteInvite(id: string): Promise<void> {
+  return apiRequest(`/invites/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+// ==================== Audit Logs API ====================
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  entityType?: string;
+  entityId?: string;
+  metadata?: Record<string, any>;
+  ipAddress?: string;
+  userAgent?: string;
+  createdAt: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+}
+
+export async function getAuditLogs(options?: { limit?: number; offset?: number }): Promise<AuditLog[]> {
+  const params = new URLSearchParams();
+  if (options?.limit) params.append('limit', options.limit.toString());
+  if (options?.offset) params.append('offset', options.offset.toString());
+  const query = params.toString();
+  return apiRequest(`/audit-logs${query ? `?${query}` : ''}`);
+}
+
 // ==================== Admin API ====================
 
 export interface AdminDashboardStats {
@@ -413,6 +544,23 @@ export interface AdminDashboardStats {
   users: { total: number; active: number };
   leads: number;
   jobs: number;
+  recentTenants: {
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+    createdAt: string;
+    usersCount: number;
+    leadsCount: number;
+  }[];
+  recentUsers: {
+    id: string;
+    name: string;
+    email: string;
+    isActive: boolean;
+    isSuperAdmin: boolean;
+    createdAt: string;
+  }[];
 }
 
 export interface AdminTenant {
@@ -485,6 +633,40 @@ export async function toggleUserSuperAdmin(id: string, isSuperAdmin: boolean): P
   return apiRequest(`/admin/users/${id}/super-admin`, {
     method: 'PATCH',
     body: JSON.stringify({ isSuperAdmin }),
+  });
+}
+
+export async function createAdminPlan(data: {
+  name: string;
+  nameAr: string;
+  price: number;
+  yearlyPrice?: number;
+  seatsLimit: number;
+  leadsLimit: number;
+  searchesLimit: number;
+  messagesLimit: number;
+  isActive?: boolean;
+}): Promise<Plan> {
+  return apiRequest('/admin/plans', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateAdminPlan(id: string, data: {
+  name?: string;
+  nameAr?: string;
+  price?: number;
+  yearlyPrice?: number;
+  seatsLimit?: number;
+  leadsLimit?: number;
+  searchesLimit?: number;
+  messagesLimit?: number;
+  isActive?: boolean;
+}): Promise<Plan> {
+  return apiRequest(`/admin/plans/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
   });
 }
 
@@ -610,4 +792,110 @@ export async function cancelSubscription(tenantId: string, immediate = false): P
     method: 'POST',
     body: JSON.stringify({ immediate }),
   });
+}
+
+// ==================== Data Bank API (Super Admin) ====================
+
+export interface DataBankStats {
+  totalLeads: number;
+  leadsToday: number;
+  leadsThisWeek: number;
+  leadsThisMonth: number;
+  byStatus: { status: string; count: number }[];
+  bySource: { source: string; count: number }[];
+  byTenant: { tenantId: string; tenantName: string; count: number }[];
+}
+
+export interface DataBankLead {
+  id: string;
+  companyName: string;
+  industry?: string;
+  city?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  status: string;
+  source?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  tenant: { id: string; name: string; slug: string };
+  createdBy: { id: string; name: string; email: string };
+}
+
+export interface DataBankFilters {
+  sources: { value: string; label: string; count: number }[];
+  cities: { value: string; label: string; count: number }[];
+  industries: { value: string; label: string; count: number }[];
+  tenants: { value: string; label: string }[];
+  statuses: { value: string; label: string }[];
+}
+
+export interface DataBankLeadsParams {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  tenantId?: string;
+  status?: string;
+  source?: string;
+  city?: string;
+  industry?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+export async function getDataBankStats(): Promise<DataBankStats> {
+  return apiRequest('/admin/data-bank/stats');
+}
+
+export async function getDataBankFilters(): Promise<DataBankFilters> {
+  return apiRequest('/admin/data-bank/filters');
+}
+
+export async function getDataBankLeads(params?: DataBankLeadsParams): Promise<{ leads: DataBankLead[]; total: number }> {
+  const searchParams = new URLSearchParams();
+  if (params?.limit) searchParams.append('limit', params.limit.toString());
+  if (params?.offset) searchParams.append('offset', params.offset.toString());
+  if (params?.search) searchParams.append('search', params.search);
+  if (params?.tenantId) searchParams.append('tenantId', params.tenantId);
+  if (params?.status) searchParams.append('status', params.status);
+  if (params?.source) searchParams.append('source', params.source);
+  if (params?.city) searchParams.append('city', params.city);
+  if (params?.industry) searchParams.append('industry', params.industry);
+  if (params?.dateFrom) searchParams.append('dateFrom', params.dateFrom);
+  if (params?.dateTo) searchParams.append('dateTo', params.dateTo);
+  if (params?.sortBy) searchParams.append('sortBy', params.sortBy);
+  if (params?.sortOrder) searchParams.append('sortOrder', params.sortOrder);
+  
+  const query = searchParams.toString();
+  return apiRequest(`/admin/data-bank/leads${query ? `?${query}` : ''}`);
+}
+
+export async function getDataBankLead(id: string): Promise<DataBankLead> {
+  return apiRequest(`/admin/data-bank/leads/${id}`);
+}
+
+export async function exportDataBankLeads(params?: {
+  tenantId?: string;
+  status?: string;
+  source?: string;
+  city?: string;
+  industry?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<any[]> {
+  const searchParams = new URLSearchParams();
+  if (params?.tenantId) searchParams.append('tenantId', params.tenantId);
+  if (params?.status) searchParams.append('status', params.status);
+  if (params?.source) searchParams.append('source', params.source);
+  if (params?.city) searchParams.append('city', params.city);
+  if (params?.industry) searchParams.append('industry', params.industry);
+  if (params?.dateFrom) searchParams.append('dateFrom', params.dateFrom);
+  if (params?.dateTo) searchParams.append('dateTo', params.dateTo);
+  
+  const query = searchParams.toString();
+  return apiRequest(`/admin/data-bank/export${query ? `?${query}` : ''}`);
 }

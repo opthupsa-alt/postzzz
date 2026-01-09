@@ -14,6 +14,11 @@ ops/*.env
 **/SECRETS.md
 *.secrets.*
 
+# Local development config (Single Source of Truth)
+config.local.json
+extension/config.js
+.env.master
+
 # ─────────────────────────────────────────────────────────────────────────────────
 # DEPENDENCIES
 # ─────────────────────────────────────────────────────────────────────────────────

@@ -1,10 +1,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { Users, Search, MessageSquare, TrendingUp, ArrowUpRight, Zap, Target, BarChart3, Clock, ChevronLeft, Activity, ExternalLink, ShieldCheck, Filter, Loader2 } from 'lucide-react';
-import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
-import { getJobs, getStoredUser, Job } from '../lib/api';
+import { getDashboardStats, getStoredUser, DashboardStats } from '../lib/api';
 
 const StatCard = ({ title, value, icon: Icon, color, trend }: any) => (
   <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all group cursor-pointer relative overflow-hidden">
@@ -77,23 +76,22 @@ const PerformanceChart = () => (
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { savedLeads } = useStore();
-  const [apiJobs, setApiJobs] = useState<Job[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const user = getStoredUser();
 
   useEffect(() => {
-    const fetchJobs = async () => {
+    const fetchStats = async () => {
       try {
-        const jobs = await getJobs();
-        setApiJobs(jobs);
+        const data = await getDashboardStats();
+        setStats(data);
       } catch (err) {
-        console.error('Failed to fetch jobs:', err);
+        console.error('Failed to fetch dashboard stats:', err);
       } finally {
         setLoading(false);
       }
     };
-    fetchJobs();
+    fetchStats();
   }, []);
 
   return (
@@ -114,10 +112,10 @@ const DashboardPage: React.FC = () => {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="إجمالي العملاء" value={savedLeads.length + 1200} icon={Users} color="bg-blue-50 text-blue-600" trend="12" />
-        <StatCard title="أدلة مكتشفة" value="4,852" icon={Target} color="bg-purple-50 text-purple-600" trend="18" />
-        <StatCard title="رسائل واتساب" value="856" icon={MessageSquare} color="bg-green-50 text-green-600" trend="24" />
-        <StatCard title="عمليات البحث" value={apiJobs.length + 42} icon={BarChart3} color="bg-orange-50 text-orange-600" trend="5" />
+        <StatCard title="إجمالي العملاء" value={stats?.leads.totalLeads.toLocaleString() || '0'} icon={Users} color="bg-blue-50 text-blue-600" trend={stats?.leads.leadsThisWeek || 0} />
+        <StatCard title="عملاء هذا الأسبوع" value={stats?.leads.leadsThisWeek.toLocaleString() || '0'} icon={Target} color="bg-purple-50 text-purple-600" trend={stats?.leads.leadsToday || 0} />
+        <StatCard title="عمليات البحث" value={stats?.jobs.totalJobs.toLocaleString() || '0'} icon={BarChart3} color="bg-orange-50 text-orange-600" trend={stats?.jobs.jobsThisWeek || 0} />
+        <StatCard title="عمليات اليوم" value={stats?.jobs.jobsToday.toLocaleString() || '0'} icon={Zap} color="bg-green-50 text-green-600" trend={stats?.jobs.jobsToday || 0} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -168,9 +166,9 @@ const DashboardPage: React.FC = () => {
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="animate-spin text-blue-600" size={32} />
               </div>
-            ) : apiJobs.length > 0 ? (
+            ) : stats?.jobs.recentJobs && stats.jobs.recentJobs.length > 0 ? (
               <div className="space-y-10 relative before:absolute before:inset-y-0 before:right-3 before:w-px before:bg-gray-100">
-                {apiJobs.slice(0, 5).map((job, i) => (
+                {stats.jobs.recentJobs.map((job) => (
                   <div key={job.id} className="relative flex items-start gap-8 group">
                     <div className={`absolute right-0 w-6 h-6 bg-white border-2 rounded-lg flex items-center justify-center z-10 -mr-1 shadow-sm group-hover:scale-125 transition-transform ${
                       job.status === 'COMPLETED' ? 'border-green-500' : 
@@ -212,7 +210,7 @@ const DashboardPage: React.FC = () => {
               </div>
             )}
             <button onClick={() => navigate('/app/prospecting')} className="w-full mt-10 py-4 bg-gray-50 hover:bg-gray-100 rounded-2xl text-xs font-black text-gray-500 transition-all border border-gray-100">
-              {apiJobs.length > 0 ? 'عرض جميع العمليات' : 'ابدأ بحث جديد'}
+              {stats?.jobs.recentJobs && stats.jobs.recentJobs.length > 0 ? 'عرض جميع العمليات' : 'ابدأ بحث جديد'}
             </button>
           </div>
 

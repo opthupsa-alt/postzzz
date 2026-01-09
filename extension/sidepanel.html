@@ -58,6 +58,20 @@
       font-size: 14px;
     }
     
+    .settings-btn {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      border-radius: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.2s;
+    }
+    
+    .settings-btn:hover {
+      background: rgba(255,255,255,0.3);
+    }
+    
     /* Login Form */
     .login-container {
       display: flex;
@@ -370,6 +384,32 @@
       color: #a16207;
       font-size: 12px;
     }
+    
+    /* Layer Badges */
+    .layer-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #f1f5f9;
+      color: #94a3b8;
+      border: 1px solid #e2e8f0;
+    }
+    
+    .layer-badge.active {
+      background: #ecfdf5;
+      color: #059669;
+      border-color: #a7f3d0;
+    }
+    
+    .layer-badge.disabled {
+      background: #fef2f2;
+      color: #dc2626;
+      border-color: #fecaca;
+    }
   </style>
 </head>
 <body>
@@ -430,6 +470,7 @@
     <div class="header">
       <h1>ليدز</h1>
       <div class="header-user">
+        <button id="settingsBtn" class="settings-btn" title="الإعدادات">⚙️</button>
         <span id="userName">المستخدم</span>
         <div class="avatar" id="userAvatar">م</div>
       </div>
@@ -465,31 +506,29 @@
         </div>
       </div>
       
-      <!-- Test Search Section -->
+      <!-- Extension Status -->
       <div class="status-card">
-        <h3>🔍 اختبار البحث</h3>
+        <h3>⚡ حالة الإضافة</h3>
         <div style="margin-top: 12px;">
-          <!-- Search Type Toggle -->
-          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-            <button id="searchTypeSingle" class="search-type-btn" style="flex: 1; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px; background: white; cursor: pointer; font-weight: 600;">
-              🏢 شركة محددة
-            </button>
-            <button id="searchTypeBulk" class="search-type-btn active" style="flex: 1; padding: 10px; border: 2px solid #3b82f6; border-radius: 8px; background: #eff6ff; cursor: pointer; font-weight: 600; color: #1d4ed8;">
-              📋 بحث متعدد
-            </button>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span id="extensionStatusIcon" style="font-size: 20px;">✅</span>
+            <span id="extensionStatusText" style="font-weight: 600; color: #16a34a;">جاهز للعمل</span>
           </div>
-          <input type="text" id="testQuery" placeholder="النشاط (مثال: مطاعم)" style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; font-family: inherit;">
-          <input type="text" id="testCity" placeholder="المدينة (مثال: الرياض)" style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; font-family: inherit;">
-          <button id="testSearchBtn" style="width: 100%; padding: 12px; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;">
-            🚀 بدء البحث التجريبي
-          </button>
+          <div style="font-size: 12px; color: #64748b;">
+            <div>طبقات البحث النشطة:</div>
+            <div style="display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap;">
+              <span id="layerGoogleMaps" class="layer-badge active">🗺️ Maps</span>
+              <span id="layerGoogleSearch" class="layer-badge active">🔍 Search</span>
+              <span id="layerSocialMedia" class="layer-badge">📱 Social</span>
+            </div>
+          </div>
         </div>
       </div>
       
       <!-- Info Box -->
       <div class="info-box">
         <h4>ℹ️ كيفية الاستخدام</h4>
-        <p>استخدم البحث التجريبي أعلاه أو افتح المنصة للبحث من هناك.</p>
+        <p>افتح المنصة وابدأ البحث من هناك. الإضافة ستنفذ عمليات البحث تلقائياً.</p>
       </div>
       
       <!-- Actions -->
@@ -510,6 +549,7 @@
     </div>
   </div>
   
+  <script src="config.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

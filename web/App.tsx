@@ -3,7 +3,8 @@ import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import AppShell from './components/AppShell';
 import AdminLayout from './components/AdminLayout';
-import ProtectedRoute from './components/ProtectedRoute';
+import SuperAdminRoute from './components/SuperAdminRoute';
+import UserRoute from './components/UserRoute';
 import ProspectingPage from './pages/ProspectingPage';
 import LeadDetailPage from './pages/LeadDetailPage';
 import CompanyDetailPage from './pages/CompanyDetailPage';
@@ -28,6 +29,9 @@ import AdminUsers from './pages/admin/AdminUsers';
 import AdminPlans from './pages/admin/AdminPlans';
 import AdminSubscriptions from './pages/admin/AdminSubscriptions';
 import AdminSettings from './pages/admin/AdminSettings';
+import AdminTenantDetail from './pages/admin/AdminTenantDetail';
+import AdminDataBank from './pages/admin/AdminDataBank';
+import ExtensionSettingsPage from './pages/ExtensionSettingsPage';
 
 const App = () => {
   return (
@@ -40,22 +44,25 @@ const App = () => {
         
         <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
         
-        {/* Admin Panel Routes */}
+        {/* Admin Panel Routes - Super Admin Only */}
         <Route path="/admin" element={
-          <ProtectedRoute>
+          <SuperAdminRoute>
             <AdminLayout />
-          </ProtectedRoute>
+          </SuperAdminRoute>
         }>
           <Route index element={<AdminDashboard />} />
           <Route path="tenants" element={<AdminTenants />} />
+          <Route path="tenants/:id" element={<AdminTenantDetail />} />
           <Route path="users" element={<AdminUsers />} />
+          <Route path="data-bank" element={<AdminDataBank />} />
           <Route path="plans" element={<AdminPlans />} />
           <Route path="subscriptions" element={<AdminSubscriptions />} />
           <Route path="settings" element={<AdminSettings />} />
         </Route>
 
+        {/* User Panel Routes - Regular Users Only */}
         <Route path="/app/*" element={
-          <ProtectedRoute>
+          <UserRoute>
             <AppShell>
               <Routes>
                 <Route path="dashboard" element={<DashboardPage />} />
@@ -71,10 +78,11 @@ const App = () => {
                 <Route path="team" element={<TeamPage />} />
                 <Route path="integrations" element={<IntegrationsPage />} />
                 <Route path="settings" element={<SettingsPage />} />
+                <Route path="extension-settings" element={<ExtensionSettingsPage />} />
                 <Route path="audit-logs" element={<AuditLogsPage />} />
               </Routes>
             </AppShell>
-          </ProtectedRoute>
+          </UserRoute>
         } />
       </Routes>
     </Router>

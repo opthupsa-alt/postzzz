@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Delete,
   Param,
@@ -125,5 +126,123 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Settings updated' })
   async updateSettings(@Body() dto: UpdatePlatformSettingsDto) {
     return this.adminService.updatePlatformSettings(dto);
+  }
+
+  // ==================== Plans ====================
+
+  @Post('plans')
+  @ApiOperation({ summary: 'Create a new plan' })
+  @ApiResponse({ status: 201, description: 'Plan created' })
+  async createPlan(@Body() dto: {
+    name: string;
+    nameAr: string;
+    price: number;
+    yearlyPrice?: number;
+    seatsLimit: number;
+    leadsLimit: number;
+    searchesLimit: number;
+    messagesLimit: number;
+    isActive?: boolean;
+  }) {
+    return this.adminService.createPlan(dto);
+  }
+
+  @Patch('plans/:id')
+  @ApiOperation({ summary: 'Update a plan' })
+  @ApiResponse({ status: 200, description: 'Plan updated' })
+  async updatePlan(
+    @Param('id') id: string,
+    @Body() dto: {
+      name?: string;
+      nameAr?: string;
+      price?: number;
+      yearlyPrice?: number;
+      seatsLimit?: number;
+      leadsLimit?: number;
+      searchesLimit?: number;
+      messagesLimit?: number;
+      isActive?: boolean;
+    },
+  ) {
+    return this.adminService.updatePlan(id, dto);
+  }
+
+  // ==================== Data Bank ====================
+
+  @Get('data-bank/stats')
+  @ApiOperation({ summary: 'Get data bank statistics' })
+  @ApiResponse({ status: 200, description: 'Data bank statistics' })
+  async getDataBankStats() {
+    return this.adminService.getDataBankStats();
+  }
+
+  @Get('data-bank/filters')
+  @ApiOperation({ summary: 'Get available filters for data bank' })
+  @ApiResponse({ status: 200, description: 'Available filters' })
+  async getDataBankFilters() {
+    return this.adminService.getDataBankFilters();
+  }
+
+  @Get('data-bank/leads')
+  @ApiOperation({ summary: 'Get all leads across all tenants' })
+  @ApiResponse({ status: 200, description: 'List of leads' })
+  async getDataBankLeads(
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+    @Query('search') search?: string,
+    @Query('tenantId') tenantId?: string,
+    @Query('status') status?: string,
+    @Query('source') source?: string,
+    @Query('city') city?: string,
+    @Query('industry') industry?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: 'asc' | 'desc',
+  ) {
+    return this.adminService.getDataBankLeads({
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      search,
+      tenantId,
+      status,
+      source,
+      city,
+      industry,
+      dateFrom,
+      dateTo,
+      sortBy,
+      sortOrder,
+    });
+  }
+
+  @Get('data-bank/leads/:id')
+  @ApiOperation({ summary: 'Get lead details' })
+  @ApiResponse({ status: 200, description: 'Lead details' })
+  async getDataBankLead(@Param('id') id: string) {
+    return this.adminService.getDataBankLead(id);
+  }
+
+  @Get('data-bank/export')
+  @ApiOperation({ summary: 'Export leads data' })
+  @ApiResponse({ status: 200, description: 'Exported leads data' })
+  async exportDataBankLeads(
+    @Query('tenantId') tenantId?: string,
+    @Query('status') status?: string,
+    @Query('source') source?: string,
+    @Query('city') city?: string,
+    @Query('industry') industry?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.adminService.exportDataBankLeads({
+      tenantId,
+      status,
+      source,
+      city,
+      industry,
+      dateFrom,
+      dateTo,
+    });
   }
 }

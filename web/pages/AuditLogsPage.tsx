@@ -1,23 +1,41 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  ShieldAlert, Search, Filter, Trash2, Info, FileText, 
-  Smartphone, Download, ArrowUpRight, Activity, ShieldCheck, 
-  Lock, AlertTriangle, Zap, Server, Shield, CheckCircle2,
-  Clock, Target, Database, Eye, ChevronLeft
+  Search, Filter, Trash2, FileText, 
+  Smartphone, Download, Activity, ShieldCheck, 
+  Server, Database, Eye, ChevronLeft, Loader2, Users,
+  Shield, Target, Lock, CheckCircle2, AlertTriangle, Zap
 } from 'lucide-react';
-import { useStore } from '../store/useStore';
 import PageHeader from '../components/PageHeader';
 import Guard from '../components/Guard';
+import { getAuditLogs, AuditLog } from '../lib/api';
+import { showToast } from '../components/NotificationToast';
 
 const AuditLogsPage: React.FC = () => {
-  const { auditLogs } = useStore();
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const loadLogs = async () => {
+      try {
+        setLoading(true);
+        const logs = await getAuditLogs({ limit: 100 });
+        setAuditLogs(logs);
+      } catch (err: any) {
+        console.error('Failed to load audit logs:', err);
+        showToast('ERROR', 'خطأ', 'فشل تحميل سجلات الرقابة');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadLogs();
+  }, []);
 
   const filteredLogs = auditLogs.filter(log => 
     log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    log.user.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    log.target.toLowerCase().includes(searchTerm.toLowerCase())
+    (log.user?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (log.entityType || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getActionStyles = (action: string) => {
@@ -78,12 +96,25 @@ const AuditLogsPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {filteredLogs.map((log) => (
+                      {loading ? (
+                        <tr>
+                          <td colSpan={5} className="py-20 text-center">
+                            <Loader2 className="animate-spin text-blue-600 mx-auto" size={32} />
+                          </td>
+                        </tr>
+                      ) : filteredLogs.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-20 text-center text-gray-400">
+                            <Eye size={48} className="mx-auto mb-4 opacity-50" />
+                            <p className="font-bold">لا توجد سجلات</p>
+                          </td>
+                        </tr>
+                      ) : filteredLogs.map((log) => (
                         <tr key={log.id} className="hover:bg-blue-50/30 transition-all group">
                           <td className="px-10 py-6">
                             <div className="flex items-center gap-3">
                               <div className={`p-2.5 rounded-xl border-2 shadow-sm ${getActionStyles(log.action)} group-hover:scale-110 transition-transform`}>
-                                {log.action.includes('حذف') ? <Trash2 size={18} /> : log.action.includes('إرسال') ? <Smartphone size={18} /> : log.action.includes('تعديل') ? <Activity size={18} /> : <FileText size={18} />}
+                                {log.action.includes('DELETE') ? <Trash2 size={18} /> : log.action.includes('CREATE') ? <FileText size={18} /> : <Activity size={18} />}
                               </div>
                               <span className="font-black text-gray-900 text-sm">{log.action}</span>
                             </div>
@@ -91,21 +122,21 @@ const AuditLogsPage: React.FC = () => {
                           <td className="px-6 py-6">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-2xl bg-white border border-gray-100 text-blue-600 flex items-center justify-center font-black text-xs shadow-sm group-hover:bg-blue-600 group-hover:text-white transition-all duration-500">
-                                {log.user[0]}
+                                {log.user?.name?.[0] || '?'}
                               </div>
-                              <span className="text-sm font-bold text-gray-700">{log.user}</span>
+                              <span className="text-sm font-bold text-gray-700">{log.user?.name || 'نظام'}</span>
                             </div>
                           </td>
                           <td className="px-6 py-6">
                             <div className="flex items-center gap-2">
                                <Database size={14} className="text-gray-300" />
-                               <span className="text-sm font-bold text-gray-500">{log.target}</span>
+                               <span className="text-sm font-bold text-gray-500">{log.entityType || '-'}</span>
                             </div>
                           </td>
                           <td className="px-6 py-6">
                             <div className="flex flex-col text-[11px] text-gray-400 font-black uppercase tracking-tighter">
-                              <span className="font-bold text-gray-700">{new Date(log.timestamp).toLocaleTimeString('ar-SA')}</span>
-                              <span>{new Date(log.timestamp).toLocaleDateString('ar-SA')}</span>
+                              <span className="font-bold text-gray-700">{new Date(log.createdAt).toLocaleTimeString('ar-SA')}</span>
+                              <span>{new Date(log.createdAt).toLocaleDateString('ar-SA')}</span>
                             </div>
                           </td>
                           <td className="px-10 py-6 text-left">
@@ -118,15 +149,6 @@ const AuditLogsPage: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
-                {filteredLogs.length === 0 && (
-                  <div className="py-40 flex flex-col items-center justify-center text-center">
-                    <div className="bg-gray-50 p-10 rounded-[3rem] mb-6">
-                       <Eye size={64} className="text-gray-200" />
-                    </div>
-                    <h4 className="text-2xl font-black text-gray-900">لا توجد سجلات مطابقة</h4>
-                    <p className="text-gray-400 font-bold mt-2">جرب تغيير كلمات البحث أو تصفية التاريخ.</p>
-                  </div>
-                )}
               </div>
            </div>
 

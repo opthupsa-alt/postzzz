@@ -81,6 +81,15 @@ export class LeadsController {
     return { count };
   }
 
+  @Get('dashboard-stats')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permissions.LEAD_VIEW)
+  @ApiOperation({ summary: 'Get dashboard statistics' })
+  @ApiResponse({ status: 200, description: 'Dashboard statistics' })
+  async getDashboardStats(@CurrentUser() user: CurrentUserPayload) {
+    return this.leadsService.getDashboardStats(user.tenantId);
+  }
+
   @Get(':id')
   @UseGuards(PermissionsGuard)
   @RequirePermissions(Permissions.LEAD_VIEW)

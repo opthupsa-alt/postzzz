@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Users, Target, Briefcase, TrendingUp, Shield, AlertCircle } from 'lucide-react';
+import { Building2, Users, Target, Briefcase, TrendingUp, Shield, AlertCircle, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { getAdminDashboard, AdminDashboardStats } from '../../lib/api';
 
 const AdminDashboard: React.FC = () => {
@@ -113,11 +114,119 @@ const AdminDashboard: React.FC = () => {
         })}
       </div>
 
-      <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-6">
-        <h3 className="font-bold text-yellow-800 mb-2">🚧 قيد التطوير</h3>
-        <p className="text-yellow-700 text-sm">
-          لوحة تحكم المنصة قيد التطوير. ستتضمن قريباً: إدارة الباقات، الفواتير، Feature Flags، وسجلات النظام.
-        </p>
+      {/* Recent Tenants & Users */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Tenants */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+              <Building2 size={20} className="text-blue-600" />
+              أحدث المنظمات
+            </h3>
+            <Link to="/admin/tenants" className="text-sm font-bold text-blue-600 hover:text-blue-700">
+              عرض الكل →
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {stats?.recentTenants?.map((tenant) => (
+              <div key={tenant.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Building2 size={16} className="text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900 text-sm">{tenant.name}</p>
+                    <p className="text-xs text-gray-400">{tenant.slug}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                    tenant.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {tenant.status === 'ACTIVE' ? 'نشط' : 'معلق'}
+                  </span>
+                  <div className="text-xs text-gray-400 flex items-center gap-1">
+                    <Clock size={12} />
+                    {new Date(tenant.createdAt).toLocaleDateString('ar-SA')}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {(!stats?.recentTenants || stats.recentTenants.length === 0) && (
+              <p className="text-center text-gray-400 py-4">لا توجد منظمات</p>
+            )}
+          </div>
+        </div>
+
+        {/* Recent Users */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+              <Users size={20} className="text-green-600" />
+              أحدث المستخدمين
+            </h3>
+            <Link to="/admin/users" className="text-sm font-bold text-green-600 hover:text-green-700">
+              عرض الكل →
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {stats?.recentUsers?.map((user) => (
+              <div key={user.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                    {user.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900 text-sm flex items-center gap-1">
+                      {user.name}
+                      {user.isSuperAdmin && (
+                        <Shield size={12} className="text-red-500" />
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-400">{user.email}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {user.isActive ? (
+                    <CheckCircle size={16} className="text-green-500" />
+                  ) : (
+                    <XCircle size={16} className="text-red-500" />
+                  )}
+                  <div className="text-xs text-gray-400 flex items-center gap-1">
+                    <Clock size={12} />
+                    {new Date(user.createdAt).toLocaleDateString('ar-SA')}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {(!stats?.recentUsers || stats.recentUsers.length === 0) && (
+              <p className="text-center text-gray-400 py-4">لا يوجد مستخدمين</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="bg-white rounded-3xl border border-gray-100 p-6">
+        <h3 className="text-lg font-black text-gray-900 mb-4">إجراءات سريعة</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Link to="/admin/tenants" className="flex flex-col items-center gap-2 p-4 bg-blue-50 rounded-2xl hover:bg-blue-100 transition-colors">
+            <Building2 size={24} className="text-blue-600" />
+            <span className="font-bold text-sm text-blue-700">إدارة المنظمات</span>
+          </Link>
+          <Link to="/admin/users" className="flex flex-col items-center gap-2 p-4 bg-green-50 rounded-2xl hover:bg-green-100 transition-colors">
+            <Users size={24} className="text-green-600" />
+            <span className="font-bold text-sm text-green-700">إدارة المستخدمين</span>
+          </Link>
+          <Link to="/admin/plans" className="flex flex-col items-center gap-2 p-4 bg-purple-50 rounded-2xl hover:bg-purple-100 transition-colors">
+            <Target size={24} className="text-purple-600" />
+            <span className="font-bold text-sm text-purple-700">إدارة الباقات</span>
+          </Link>
+          <Link to="/admin/settings" className="flex flex-col items-center gap-2 p-4 bg-orange-50 rounded-2xl hover:bg-orange-100 transition-colors">
+            <Briefcase size={24} className="text-orange-600" />
+            <span className="font-bold text-sm text-orange-700">إعدادات المنصة</span>
+          </Link>
+        </div>
       </div>
     </div>
   );

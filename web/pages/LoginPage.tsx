@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Zap, Mail, Lock, ArrowLeft, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
-import { login, ApiError } from '../lib/api';
+import { login, ApiError, getStoredUser } from '../lib/api';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -17,8 +17,13 @@ const LoginPage: React.FC = () => {
     setError('');
 
     try {
-      await login(email, password);
-      navigate('/app/dashboard');
+      const authResponse = await login(email, password);
+      // Redirect Super Admin to admin panel, others to app dashboard
+      if (authResponse.user.isSuperAdmin) {
+        navigate('/admin');
+      } else {
+        navigate('/app/dashboard');
+      }
     } catch (err) {
       const apiError = err as ApiError;
       if (apiError.statusCode === 401) {

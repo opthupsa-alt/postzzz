@@ -9,16 +9,64 @@
  * - Evidence collection and upload
  */
 
-// Default config (will be updated from API)
+// ==================== Default Configuration ====================
+// الإعدادات الافتراضية - يتم تحديثها من config.js عبر sync-and-start.ps1
+const DEFAULT_CONFIG = {
+  API_URL: 'http://localhost:3001',
+  WEB_URL: 'http://localhost:3000',
+  DEBUG_MODE: false,
+  SHOW_SEARCH_WINDOW: false
+};
+
+// Default config (will be updated from config.js, API, or storage)
 let platformConfig = {
-  platformUrl: 'http://localhost:3002',
-  apiUrl: 'http://localhost:3001',
+  platformUrl: DEFAULT_CONFIG.WEB_URL,
+  apiUrl: DEFAULT_CONFIG.API_URL,
   extensionAutoLogin: true,
-  extensionDebugMode: false,
+  extensionDebugMode: DEFAULT_CONFIG.DEBUG_MODE,
   searchMethod: 'GOOGLE_MAPS_REAL',
   searchRateLimit: 10,
   crawlRateLimit: 20,
 };
+
+// Load config from config.js file
+async function loadLocalConfig() {
+  try {
+    const configUrl = chrome.runtime.getURL('config.js');
+    const response = await fetch(configUrl);
+    const text = await response.text();
+    
+    // Parse LEEDZ_CONFIG from the file
+    const match = text.match(/const\s+LEEDZ_CONFIG\s*=\s*(\{[\s\S]*?\});/);
+    if (match) {
+      const configObj = eval('(' + match[1] + ')');
+      if (configObj.API_URL) {
+        platformConfig.apiUrl = configObj.API_URL;
+        DEFAULT_CONFIG.API_URL = configObj.API_URL;
+      }
+      if (configObj.WEB_URL) {
+        platformConfig.platformUrl = configObj.WEB_URL;
+        DEFAULT_CONFIG.WEB_URL = configObj.WEB_URL;
+      }
+      if (configObj.DEBUG_MODE !== undefined) {
+        platformConfig.extensionDebugMode = configObj.DEBUG_MODE;
+        DEFAULT_CONFIG.DEBUG_MODE = configObj.DEBUG_MODE;
+      }
+      if (configObj.SHOW_SEARCH_WINDOW !== undefined) {
+        DEFAULT_CONFIG.SHOW_SEARCH_WINDOW = configObj.SHOW_SEARCH_WINDOW;
+      }
+      console.log('[Leedz] Config loaded from config.js:', { 
+        apiUrl: platformConfig.apiUrl, 
+        platformUrl: platformConfig.platformUrl 
+      });
+    }
+  } catch (error) {
+    console.log('[Leedz] Using default config (config.js not found or error):', error.message);
+  }
+}
+
+// Initialize config on startup
+loadLocalConfig();
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -367,24 +415,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case 'SEARCH_GOOGLE_MAPS':
           return await searchGoogleMaps(message.query, message.city);
 
-        case 'TEST_SEARCH':
-          // Direct test search from side panel
-          console.log('[Leedz] Test search:', message.query, message.city);
+        case 'GET_SETTINGS':
+          // Get extension settings from storage or backend
           try {
-            const testJobPlan = {
-              jobId: 'test_' + Date.now(),
-              type: 'GOOGLE_MAPS_SEARCH',
-              context: {
-                query: message.query,
-                city: message.city,
-                country: message.country || 'السعودية',
-                searchType: message.searchType || 'BULK',
-              },
+            const settingsData = await getStorageData(['leedz_extension_settings']);
+            const settings = settingsData.leedz_extension_settings || {
+              enableGoogleMaps: true,
+              enableGoogleSearch: true,
+              enableSocialMedia: false,
+              matchThreshold: 90,
+              maxResults: 30,
+              searchDelay: 3,
+              showSearchWindow: false,
+              debugMode: false,
             };
-            await executeGoogleMapsSearch(testJobPlan);
+            return { settings };
+          } catch (error) {
+            console.error('[Leedz] Get settings error:', error);
+            return { settings: null, error: error.message };
+          }
+
+        case 'UPDATE_SETTINGS':
+          // Update extension settings
+          try {
+            await setStorageData({ leedz_extension_settings: message.settings });
+            // Update local showSearchWindow variable
+            if (message.settings.showSearchWindow !== undefined) {
+              showSearchWindow = message.settings.showSearchWindow;
+            }
             return { success: true };
           } catch (error) {
-            console.error('[Leedz] Test search error:', error);
+            console.error('[Leedz] Update settings error:', error);
             return { success: false, error: error.message };
           }
 
@@ -874,6 +935,244 @@ async function closeExecutionWindow() {
 
 // ==================== Google Maps Search (Real Browser) ====================
 
+// Timing configuration for performance optimization
+const TIMING = {
+  PAGE_LOAD_TIMEOUT: 20000,     // Max wait for page load
+  RESULTS_WAIT: 4000,           // Wait for results to render (reduced from 5000)
+  DETAILS_WAIT: 2500,           // Wait for details to load (reduced from 3000)
+  SCROLL_DELAY: 1000,           // Delay between scrolls
+  RETRY_BASE_DELAY: 2000,       // Base delay for retries
+};
+
+// Retry configuration
+const RETRY_CONFIG = {
+  MAX_ATTEMPTS: 3,
+  DELAY_MULTIPLIER: 1.5,
+};
+
+// ==================== Smart Matcher (Inline) ====================
+const MATCH_THRESHOLD = 90; // الحد الأدنى للقبول
+
+/**
+ * خوارزمية التطابق الذكية
+ */
+function calculateSmartMatch(searchQuery, result) {
+  const factors = [];
+  let totalScore = 0;
+  let totalWeight = 0;
+
+  // تطبيع النص
+  const normalize = (str) => {
+    if (!str) return '';
+    return str.toLowerCase()
+      .replace(/[\u064B-\u065F]/g, '') // إزالة التشكيل
+      .replace(/[^\w\s\u0600-\u06FF]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  // Levenshtein distance
+  const levenshtein = (a, b) => {
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
+        }
+      }
+    }
+    return matrix[b.length][a.length];
+  };
+
+  // 1. تطابق الاسم (50%)
+  const queryName = searchQuery.name || searchQuery.query || '';
+  const resultName = result.name || '';
+  const q = normalize(queryName);
+  const n = normalize(resultName);
+  
+  let nameScore = 0;
+  if (q && n) {
+    if (q === n) nameScore = 100;
+    else if (n.includes(q) || q.includes(n)) nameScore = 95;
+    else {
+      const dist = levenshtein(q, n);
+      const maxLen = Math.max(q.length, n.length);
+      nameScore = Math.round(((maxLen - dist) / maxLen) * 100);
+      
+      // تطابق الكلمات
+      const qWords = q.split(' ').filter(w => w.length > 1);
+      const nWords = n.split(' ').filter(w => w.length > 1);
+      let matchedWords = 0;
+      for (const qw of qWords) {
+        for (const nw of nWords) {
+          if (nw.includes(qw) || qw.includes(nw)) { matchedWords++; break; }
+        }
+      }
+      const wordScore = qWords.length > 0 ? Math.round((matchedWords / qWords.length) * 100) : 0;
+      nameScore = Math.max(nameScore, wordScore);
+    }
+  }
+  factors.push({ factor: 'name', score: nameScore, weight: 0.5 });
+  totalScore += nameScore * 0.5;
+  totalWeight += 0.5;
+
+  // 2. تطابق المدينة (25%)
+  if (searchQuery.city && result.address) {
+    const cityNorm = normalize(searchQuery.city);
+    const addrNorm = normalize(result.address);
+    let cityScore = addrNorm.includes(cityNorm) ? 100 : 30;
+    factors.push({ factor: 'city', score: cityScore, weight: 0.25 });
+    totalScore += cityScore * 0.25;
+    totalWeight += 0.25;
+  }
+
+  // 3. وجود معلومات الاتصال (25%)
+  let contactScore = 0;
+  if (result.phone) contactScore += 40;
+  if (result.website) contactScore += 30;
+  if (result.email) contactScore += 20;
+  if (result.address) contactScore += 10;
+  contactScore = Math.min(contactScore, 100);
+  factors.push({ factor: 'contact', score: contactScore, weight: 0.25 });
+  totalScore += contactScore * 0.25;
+  totalWeight += 0.25;
+
+  const finalScore = totalWeight > 0 ? Math.round(totalScore / totalWeight * 100) : 0;
+
+  return {
+    totalScore: finalScore,
+    isMatch: finalScore >= MATCH_THRESHOLD,
+    threshold: MATCH_THRESHOLD,
+    factors,
+  };
+}
+
+/**
+ * فلترة النتائج حسب التطابق الذكي
+ */
+function filterResultsBySmartMatch(searchQuery, results, threshold = MATCH_THRESHOLD) {
+  return results
+    .map(result => {
+      const match = calculateSmartMatch(searchQuery, result);
+      return { ...result, matchScore: match.totalScore, matchDetails: match };
+    })
+    .filter(r => r.matchScore >= threshold)
+    .sort((a, b) => b.matchScore - a.matchScore);
+}
+
+/**
+ * Simple delay function
+ */
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Random delay to avoid detection patterns
+ */
+function randomDelay(min, max) {
+  const ms = Math.floor(Math.random() * (max - min + 1)) + min;
+  return delay(ms);
+}
+
+/**
+ * Execute function with retry logic
+ */
+async function withRetry(fn, options = {}) {
+  const {
+    maxAttempts = RETRY_CONFIG.MAX_ATTEMPTS,
+    baseDelay = TIMING.RETRY_BASE_DELAY,
+    delayMultiplier = RETRY_CONFIG.DELAY_MULTIPLIER,
+    onRetry = null,
+  } = options;
+
+  let lastError;
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn(attempt);
+    } catch (error) {
+      lastError = error;
+      
+      if (attempt === maxAttempts) {
+        throw error;
+      }
+      
+      const delayMs = baseDelay * Math.pow(delayMultiplier, attempt - 1);
+      console.log(`[Leedz Retry] Attempt ${attempt} failed, retrying in ${delayMs}ms:`, error.message);
+      
+      if (onRetry) {
+        onRetry(attempt, error, delayMs);
+      }
+      
+      await delay(delayMs);
+    }
+  }
+  
+  throw lastError;
+}
+
+/**
+ * Wait for results to appear in the page using MutationObserver
+ * More efficient than fixed setTimeout
+ */
+async function waitForResults(tabId, timeout = 10000) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      args: [timeout],
+      func: (timeoutMs) => {
+        return new Promise((resolve) => {
+          // Check if results already exist
+          const existingResults = document.querySelectorAll('a[href*="/maps/place/"]');
+          if (existingResults.length > 0) {
+            resolve({ found: true, count: existingResults.length });
+            return;
+          }
+          
+          let resolved = false;
+          
+          const observer = new MutationObserver(() => {
+            if (resolved) return;
+            const results = document.querySelectorAll('a[href*="/maps/place/"]');
+            if (results.length > 0) {
+              resolved = true;
+              observer.disconnect();
+              resolve({ found: true, count: results.length });
+            }
+          });
+          
+          observer.observe(document.body, { 
+            childList: true, 
+            subtree: true 
+          });
+          
+          // Timeout fallback
+          setTimeout(() => {
+            if (!resolved) {
+              resolved = true;
+              observer.disconnect();
+              const results = document.querySelectorAll('a[href*="/maps/place/"]');
+              resolve({ found: results.length > 0, count: results.length });
+            }
+          }, timeoutMs);
+        });
+      },
+    });
+    
+    return results[0]?.result || { found: false, count: 0 };
+  } catch (error) {
+    console.error('[Leedz] waitForResults error:', error);
+    return { found: false, count: 0 };
+  }
+}
+
 /**
  * Search Google Maps with two modes:
  * - SINGLE: Find one specific company by name (precise match)
@@ -913,90 +1212,399 @@ async function searchGoogleMaps({ query, city, country, searchType = 'BULK', max
   console.log('[Leedz] Search URL:', searchUrl);
   
   let tab = null;
-  try {
-    // Step 1: Create tab in execution window
-    if (onProgress) onProgress(15, 'جاري فتح خرائط جوجل...');
-    tab = await createExecutionTab(searchUrl);
-    console.log('[Leedz] Tab created:', tab.id);
+  
+  // Wrap the main search logic with retry
+  return await withRetry(async (attempt) => {
+    console.log(`[Leedz] Search attempt ${attempt}...`);
     
-    // Step 2: Wait for page to load with extended timeout
-    if (onProgress) onProgress(25, 'جاري تحميل الصفحة...');
-    await waitForTabLoad(tab.id, 20000);
-    console.log('[Leedz] Tab loaded');
-    
-    // Step 3: Wait for initial results to render (increased wait time)
-    if (onProgress) onProgress(35, 'جاري انتظار ظهور النتائج...');
-    await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds for results to load
-    
-    // Step 4: Scroll to load more results (for BULK search)
-    const targetResults = searchType === 'SINGLE' ? 10 : maxResults;
-    if (searchType === 'BULK' && maxResults > 10) {
-      if (onProgress) onProgress(45, 'جاري تحميل المزيد من النتائج...');
-      await scrollForMoreResults(tab.id, targetResults);
-    }
-    
-    // Step 5: Extract results
-    if (onProgress) onProgress(60, 'جاري استخراج البيانات...');
-    const results = await extractGoogleMapsResults(tab.id, targetResults, searchType === 'SINGLE' ? query : null);
-    
-    console.log('[Leedz] ========== EXTRACTION COMPLETE ==========');
-    console.log('[Leedz] Total results extracted:', results.length);
-    
-    // For SINGLE search, click on the best match and get detailed info
-    if (searchType === 'SINGLE' && results.length > 0) {
-      results.sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
-      const bestMatch = results[0];
-      console.log('[Leedz] Best match:', bestMatch.name, 'Score:', bestMatch.matchScore);
+    try {
+      // Step 1: Create tab in execution window
+      if (onProgress) onProgress(15, 'جاري فتح خرائط جوجل...');
+      tab = await createExecutionTab(searchUrl);
+      console.log('[Leedz] Tab created:', tab.id);
       
-      // If we have a source URL, navigate to it to get full details
-      if (bestMatch.sourceUrl && bestMatch.sourceUrl.includes('/maps/place/')) {
-        if (onProgress) onProgress(70, 'جاري استخراج التفاصيل الكاملة...');
-        
-        try {
-          // Navigate to the place page
-          await chrome.tabs.update(tab.id, { url: bestMatch.sourceUrl });
-          await waitForTabLoad(tab.id, 15000);
-          await new Promise(resolve => setTimeout(resolve, 3000)); // Wait for details to load
-          
-          // Extract detailed info
-          const details = await extractPlaceDetails(tab.id);
-          console.log('[Leedz] Detailed info extracted:', details);
-          
-          // Merge details with best match
-          return [{
-            ...bestMatch,
-            name: details.name || bestMatch.name,
-            phone: details.phone || bestMatch.phone,
-            website: details.website || bestMatch.website,
-            address: details.address || bestMatch.address,
-            rating: details.rating || bestMatch.rating,
-            reviews: details.reviews || bestMatch.reviews,
-            type: details.category || bestMatch.type,
-            hours: details.hours,
-            detailsExtracted: true,
-          }];
-        } catch (detailError) {
-          console.error('[Leedz] Failed to get detailed info:', detailError);
-          return [bestMatch];
-        }
+      // Step 2: Wait for page to load with extended timeout
+      if (onProgress) onProgress(25, 'جاري تحميل الصفحة...');
+      await waitForTabLoad(tab.id, TIMING.PAGE_LOAD_TIMEOUT);
+      console.log('[Leedz] Tab loaded');
+      
+      // Step 3: Wait for results using MutationObserver (more efficient)
+      if (onProgress) onProgress(35, 'جاري انتظار ظهور النتائج...');
+      const waitResult = await waitForResults(tab.id, 8000);
+      console.log('[Leedz] Results wait result:', waitResult);
+      
+      // Additional wait for DOM stability
+      await delay(TIMING.RESULTS_WAIT);
+      
+      // Step 4: Scroll to load more results (for BULK search)
+      const targetResults = searchType === 'SINGLE' ? 10 : maxResults;
+      if (searchType === 'BULK' && maxResults > 10) {
+        if (onProgress) onProgress(45, 'جاري تحميل المزيد من النتائج...');
+        await scrollForMoreResults(tab.id, targetResults);
       }
       
-      return [bestMatch];
+      // Step 5: Extract results with retry
+      if (onProgress) onProgress(60, 'جاري استخراج البيانات...');
+      let results = await extractGoogleMapsResults(tab.id, targetResults, searchType === 'SINGLE' ? query : null);
+      
+      // If no results on first try, wait a bit more and retry extraction
+      if (results.length === 0) {
+        console.log('[Leedz] No results on first extraction, waiting and retrying...');
+        await delay(2000);
+        results = await extractGoogleMapsResults(tab.id, targetResults, searchType === 'SINGLE' ? query : null);
+      }
+      
+      console.log('[Leedz] ========== EXTRACTION COMPLETE ==========');
+      console.log('[Leedz] Total results extracted:', results.length);
+      
+      // For SINGLE search, get detailed info for best match
+      if (searchType === 'SINGLE' && results.length > 0) {
+        results.sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+        const bestMatch = results[0];
+        console.log('[Leedz] Best match:', bestMatch.name, 'Score:', bestMatch.matchScore);
+        
+        // If we have a source URL, navigate to it to get full details
+        if (bestMatch.sourceUrl && bestMatch.sourceUrl.includes('/maps/place/')) {
+          if (onProgress) onProgress(70, 'جاري استخراج التفاصيل الكاملة...');
+          
+          try {
+            // Navigate to the place page
+            await chrome.tabs.update(tab.id, { url: bestMatch.sourceUrl });
+            await waitForTabLoad(tab.id, 15000);
+            await delay(TIMING.DETAILS_WAIT);
+            
+            // Extract detailed info with retry
+            let details = await extractPlaceDetails(tab.id);
+            
+            // If no phone/website found, wait a bit more and retry
+            if (!details.phone && !details.website) {
+              console.log('[Leedz] No contact info found, retrying extraction...');
+              await delay(1500);
+              details = await extractPlaceDetails(tab.id);
+            }
+            
+            console.log('[Leedz] Detailed info extracted:', details);
+            
+            // Merge details with best match
+            let enrichedResult = {
+              ...bestMatch,
+              name: details.name || bestMatch.name,
+              phone: details.phone || bestMatch.phone,
+              website: details.website || bestMatch.website,
+              email: details.email || null,
+              address: details.address || bestMatch.address,
+              rating: details.rating || bestMatch.rating,
+              reviews: details.reviews || bestMatch.reviews,
+              type: details.category || bestMatch.type,
+              hours: details.hours,
+              detailsExtracted: true,
+            };
+            
+            // Layer 2: Google Search for additional info (website, social links)
+            if (!enrichedResult.website || bestMatch.matchScore >= 70) {
+              if (onProgress) onProgress(80, 'جاري البحث عن معلومات إضافية...');
+              
+              try {
+                const googleSearchResults = await searchGoogle({
+                  query: enrichedResult.name || query,
+                  city,
+                  tabId: tab.id,
+                });
+                
+                console.log('[Leedz] Google Search results:', googleSearchResults);
+                
+                // Merge with Google Search results
+                enrichedResult = mergeSearchResults(enrichedResult, googleSearchResults);
+                
+              } catch (gsError) {
+                console.error('[Leedz] Google Search failed:', gsError);
+                // Continue without Google Search data
+              }
+            }
+            
+            return [enrichedResult];
+          } catch (detailError) {
+            console.error('[Leedz] Failed to get detailed info:', detailError);
+            return [bestMatch];
+          }
+        }
+        
+        return [bestMatch];
+      }
+      
+      // For BULK search, optionally enrich top results with details
+      if (searchType === 'BULK' && results.length > 0 && results.length <= 5) {
+        // For small result sets, try to get details for each
+        if (onProgress) onProgress(70, 'جاري استخراج تفاصيل إضافية...');
+        
+        const enrichedResults = [];
+        for (let i = 0; i < Math.min(results.length, 3); i++) {
+          const result = results[i];
+          if (result.sourceUrl && result.sourceUrl.includes('/maps/place/')) {
+            try {
+              await chrome.tabs.update(tab.id, { url: result.sourceUrl });
+              await waitForTabLoad(tab.id, 10000);
+              await delay(TIMING.DETAILS_WAIT);
+              
+              const details = await extractPlaceDetails(tab.id);
+              enrichedResults.push({
+                ...result,
+                phone: details.phone || result.phone,
+                website: details.website || result.website,
+                email: details.email || null,
+                address: details.address || result.address,
+                hours: details.hours,
+                detailsExtracted: true,
+              });
+            } catch (e) {
+              enrichedResults.push(result);
+            }
+          } else {
+            enrichedResults.push(result);
+          }
+        }
+        
+        // Add remaining results without enrichment
+        for (let i = 3; i < results.length; i++) {
+          enrichedResults.push(results[i]);
+        }
+        
+        return enrichedResults;
+      }
+      
+      return results;
+      
+    } catch (error) {
+      console.error('[Leedz] ========== SEARCH ERROR ==========');
+      console.error('[Leedz] Error:', error.message);
+      throw error;
+    } finally {
+      // Always close tab after search
+      if (tab) {
+        await closeExecutionTab(tab.id);
+        console.log('[Leedz] Tab closed');
+        tab = null;
+      }
     }
+  }, {
+    maxAttempts: 2, // Only retry once for the full search
+    baseDelay: 3000,
+    onRetry: (attempt, error) => {
+      if (onProgress) onProgress(10, `فشلت المحاولة ${attempt}، جاري إعادة المحاولة...`);
+    },
+  });
+}
+
+// ==================== Google Search (Layer 2) ====================
+
+/**
+ * Search Google and extract additional information
+ * Used to find official website and social media links
+ * 
+ * @param {Object} params - Search parameters
+ * @param {string} params.query - Company name
+ * @param {string} params.city - City name
+ * @param {number} params.tabId - Tab ID to use
+ * @returns {Object} - Extracted information
+ */
+async function searchGoogle({ query, city, tabId }) {
+  console.log('[Leedz Google Search] Starting search for:', query, city);
+  
+  const searchQuery = city ? `${query} ${city}` : query;
+  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&hl=ar`;
+  
+  console.log('[Leedz Google Search] URL:', searchUrl);
+  
+  try {
+    // Navigate to search page
+    await chrome.tabs.update(tabId, { url: searchUrl });
+    await waitForTabLoad(tabId, 15000);
+    await delay(2500); // Wait for results to render
     
+    // Extract results
+    const results = await extractGoogleSearchResults(tabId, query);
+    
+    console.log('[Leedz Google Search] Results:', results);
     return results;
     
   } catch (error) {
-    console.error('[Leedz] ========== SEARCH ERROR ==========');
-    console.error('[Leedz] Error:', error.message);
-    throw error;
-  } finally {
-    // Always close tab after search
-    if (tab) {
-      await closeExecutionTab(tab.id);
-      console.log('[Leedz] Tab closed');
-    }
+    console.error('[Leedz Google Search] Error:', error);
+    return {
+      officialWebsite: null,
+      socialLinks: {},
+      additionalInfo: [],
+      error: error.message,
+    };
   }
+}
+
+/**
+ * Extract results from Google Search page
+ */
+async function extractGoogleSearchResults(tabId, searchQuery) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      args: [searchQuery],
+      func: (query) => {
+        console.log('[Leedz Google Extract] Starting extraction for:', query);
+        
+        // URL Blacklist
+        const BLACKLIST = [
+          'google.com', 'google.co', 'goo.gl', 'youtube.com', 'facebook.com',
+          'twitter.com', 'x.com', 'instagram.com', 'linkedin.com', 'tiktok.com',
+          'snapchat.com', 'wikipedia.org', 'wikidata.org', 'yelp.com',
+          'tripadvisor.com', 'foursquare.com', 'yellowpages', 'whitepages',
+        ];
+        
+        // Social Media Patterns
+        const SOCIAL_PATTERNS = {
+          instagram: [/instagram\.com\/([^\/\?]+)/i],
+          twitter: [/twitter\.com\/([^\/\?]+)/i, /x\.com\/([^\/\?]+)/i],
+          facebook: [/facebook\.com\/([^\/\?]+)/i],
+          linkedin: [/linkedin\.com\/company\/([^\/\?]+)/i, /linkedin\.com\/in\/([^\/\?]+)/i],
+          tiktok: [/tiktok\.com\/@([^\/\?]+)/i],
+          youtube: [/youtube\.com\/(@?[^\/\?]+)/i],
+          snapchat: [/snapchat\.com\/add\/([^\/\?]+)/i],
+        };
+        
+        const extracted = {
+          officialWebsite: null,
+          socialLinks: {},
+          additionalInfo: [],
+        };
+        
+        // Helper: Check if URL is blacklisted
+        function isBlacklisted(url) {
+          if (!url) return true;
+          return BLACKLIST.some(domain => url.toLowerCase().includes(domain));
+        }
+        
+        // Helper: Get social platform from URL
+        function getSocialPlatform(url) {
+          if (!url) return null;
+          for (const [platform, patterns] of Object.entries(SOCIAL_PATTERNS)) {
+            for (const pattern of patterns) {
+              if (pattern.test(url)) return platform;
+            }
+          }
+          return null;
+        }
+        
+        // Extract from search results
+        const searchResults = document.querySelectorAll('#search .g, #rso .g, .g[data-hveid]');
+        console.log('[Leedz Google Extract] Found', searchResults.length, 'results');
+        
+        const candidates = [];
+        
+        searchResults.forEach((result, index) => {
+          const linkEl = result.querySelector('a[href]');
+          if (!linkEl) return;
+          
+          const href = linkEl.href;
+          if (!href || href.startsWith('javascript:')) return;
+          
+          const titleEl = result.querySelector('h3');
+          const title = titleEl?.textContent?.trim() || '';
+          
+          // Check for social media
+          const socialPlatform = getSocialPlatform(href);
+          if (socialPlatform && !extracted.socialLinks[socialPlatform]) {
+            extracted.socialLinks[socialPlatform] = href;
+            console.log('[Leedz Google Extract] Found social:', socialPlatform);
+          }
+          
+          // Check for official website candidate
+          if (!isBlacklisted(href) && !socialPlatform) {
+            let score = 100 - (index * 10);
+            
+            const queryLower = query.toLowerCase();
+            const titleLower = title.toLowerCase();
+            const hrefLower = href.toLowerCase();
+            
+            if (titleLower.includes(queryLower)) score += 30;
+            if (hrefLower.includes(queryLower.split(' ')[0])) score += 20;
+            
+            candidates.push({ url: href, title, score, position: index });
+          }
+        });
+        
+        // Select best website candidate
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => b.score - a.score);
+          extracted.officialWebsite = candidates[0].url;
+          console.log('[Leedz Google Extract] Best website:', candidates[0].url);
+        }
+        
+        // Extract from Knowledge Panel
+        const knowledgePanel = document.querySelector('#rhs, .kp-wholepage');
+        if (knowledgePanel) {
+          console.log('[Leedz Google Extract] Found Knowledge Panel');
+          
+          // Website from KP
+          const websiteLink = knowledgePanel.querySelector('[data-attrid*="website"] a, a[href*="://"]');
+          if (websiteLink && !isBlacklisted(websiteLink.href)) {
+            extracted.officialWebsite = websiteLink.href;
+          }
+          
+          // Social links from KP
+          const kpLinks = knowledgePanel.querySelectorAll('a[href]');
+          kpLinks.forEach(link => {
+            const platform = getSocialPlatform(link.href);
+            if (platform && !extracted.socialLinks[platform]) {
+              extracted.socialLinks[platform] = link.href;
+            }
+          });
+        }
+        
+        console.log('[Leedz Google Extract] Final:', extracted);
+        return extracted;
+      },
+    });
+    
+    return results[0]?.result || {
+      officialWebsite: null,
+      socialLinks: {},
+      additionalInfo: [],
+    };
+    
+  } catch (error) {
+    console.error('[Leedz Google Search] Extraction error:', error);
+    return {
+      officialWebsite: null,
+      socialLinks: {},
+      additionalInfo: [],
+      error: error.message,
+    };
+  }
+}
+
+/**
+ * Merge Google Maps result with Google Search result
+ */
+function mergeSearchResults(mapsData, searchData) {
+  const merged = {
+    ...mapsData,
+    website: mapsData.website || searchData?.officialWebsite || null,
+    links: {
+      googleMaps: mapsData.sourceUrl || null,
+      website: searchData?.officialWebsite || mapsData.website || null,
+      ...(searchData?.socialLinks || {}),
+    },
+    sources: {
+      googleMaps: true,
+      googleSearch: !!searchData?.officialWebsite || Object.keys(searchData?.socialLinks || {}).length > 0,
+    },
+  };
+  
+  // Clean up null links
+  if (merged.links) {
+    Object.keys(merged.links).forEach(key => {
+      if (!merged.links[key]) delete merged.links[key];
+    });
+  }
+  
+  return merged;
 }
 
 // Extract detailed info from a single place page in Google Maps
@@ -1009,6 +1617,131 @@ async function extractPlaceDetails(tabId) {
       func: () => {
         console.log('[Leedz Details] ========== EXTRACTING PLACE DETAILS ==========');
         
+        // ==================== Selectors Configuration ====================
+        const SELECTORS = {
+          name: [
+            'h1.DUwDvf',
+            'h1.fontHeadlineLarge',
+            '[role="main"] h1',
+            '.qBF1Pd',
+            '.fontHeadlineSmall',
+          ],
+          phone: [
+            'button[data-item-id*="phone"]',
+            'a[data-item-id*="phone"]',
+            '[aria-label*="Phone"]',
+            '[aria-label*="phone"]',
+            '[aria-label*="هاتف"]',
+            '[aria-label*="رقم الهاتف"]',
+            'a[href^="tel:"]',
+            'button[data-tooltip*="phone"]',
+            '.rogA2c[data-item-id*="phone"]',
+          ],
+          website: [
+            'a[data-item-id*="authority"]',
+            'a[data-item-id*="website"]',
+            '[aria-label*="Website"]',
+            '[aria-label*="website"]',
+            '[aria-label*="موقع"]',
+            '[aria-label*="الموقع الإلكتروني"]',
+            'a.CsEnBe[data-item-id*="authority"]',
+          ],
+          address: [
+            'button[data-item-id*="address"]',
+            '[data-item-id*="address"]',
+            '[aria-label*="Address"]',
+            '[aria-label*="عنوان"]',
+            '.rogA2c',
+            '.Io6YTe',
+            '.LrzXr',
+          ],
+          rating: [
+            'div.F7nice span[aria-hidden="true"]',
+            'span.ceNzKf',
+            'div.fontDisplayLarge',
+            'span.MW4etd',
+            '.F7nice span:first-child',
+          ],
+          reviews: [
+            'span[aria-label*="review"]',
+            'button[aria-label*="review"]',
+            'span[aria-label*="مراجع"]',
+            '.F7nice span:last-child',
+            'span.UY7F9',
+          ],
+          category: [
+            'button[jsaction*="category"]',
+            'span.DkEaL',
+            '.fontBodyMedium button',
+          ],
+          hours: [
+            '[aria-label*="hour"]',
+            '[aria-label*="Hours"]',
+            '[aria-label*="ساعات"]',
+            '[data-item-id*="hour"]',
+            '.t39EBf',
+            '.o0Svhf',
+          ],
+        };
+        
+        // ==================== Helper Functions ====================
+        function findElement(selectors) {
+          for (const selector of selectors) {
+            try {
+              const el = document.querySelector(selector);
+              if (el) return el;
+            } catch (e) { /* invalid selector */ }
+          }
+          return null;
+        }
+        
+        function findAllElements(selectors) {
+          const found = new Set();
+          const results = [];
+          for (const selector of selectors) {
+            try {
+              document.querySelectorAll(selector).forEach(el => {
+                if (!found.has(el)) {
+                  found.add(el);
+                  results.push(el);
+                }
+              });
+            } catch (e) { /* invalid selector */ }
+          }
+          return results;
+        }
+        
+        function extractPhoneFromText(text) {
+          if (!text) return null;
+          // Multiple phone patterns
+          const patterns = [
+            /[\+]?[(]?[0-9]{1,3}[)]?[-\s\.]?[(]?[0-9]{1,4}[)]?[-\s\.]?[0-9]{1,4}[-\s\.]?[0-9]{1,9}/g,
+            /\+?\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}/,
+            /[\d\s\-\+\(\)]{7,20}/,
+          ];
+          for (const pattern of patterns) {
+            const match = text.match(pattern);
+            if (match) {
+              const phone = match[0].trim();
+              const digitsOnly = phone.replace(/\D/g, '');
+              if (digitsOnly.length >= 7 && digitsOnly.length <= 15) {
+                return phone;
+              }
+            }
+          }
+          return null;
+        }
+        
+        function normalizeWebsite(url) {
+          if (!url) return null;
+          if (url.includes('google.com') || url.includes('goo.gl')) return null;
+          if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            url = 'https://' + url;
+          }
+          return url;
+        }
+        
+        // ==================== Initialize Details Object ====================
         const details = {
           name: null,
           phone: null,
@@ -1024,13 +1757,13 @@ async function extractPlaceDetails(tabId) {
           coordinates: null,
         };
         
-        // Name - from h1 or title
-        const nameEl = document.querySelector('h1.DUwDvf, h1.fontHeadlineLarge, [role="main"] h1');
+        // ==================== Extract Name ====================
+        const nameEl = findElement(SELECTORS.name);
         details.name = nameEl?.textContent?.trim() || null;
         console.log('[Leedz Details] Name:', details.name);
         
-        // Rating
-        const ratingEl = document.querySelector('div.F7nice span[aria-hidden="true"], span.ceNzKf, div.fontDisplayLarge');
+        // ==================== Extract Rating ====================
+        const ratingEl = findElement(SELECTORS.rating);
         if (ratingEl) {
           const ratingText = ratingEl.textContent?.trim();
           if (ratingText && /^\d/.test(ratingText)) {
@@ -1039,105 +1772,212 @@ async function extractPlaceDetails(tabId) {
         }
         console.log('[Leedz Details] Rating:', details.rating);
         
-        // Reviews count
-        const reviewsEl = document.querySelector('span[aria-label*="review"], button[aria-label*="review"]');
-        if (reviewsEl) {
-          const reviewsText = reviewsEl.getAttribute('aria-label') || reviewsEl.textContent || '';
-          const match = reviewsText.match(/([\d,\.]+)/);
-          if (match) details.reviews = match[1].replace(/,/g, '');
+        // ==================== Extract Reviews ====================
+        const reviewsElements = findAllElements(SELECTORS.reviews);
+        for (const el of reviewsElements) {
+          const text = el.getAttribute('aria-label') || el.textContent || '';
+          const patterns = [/\((\d[\d,\.]*)\)/, /(\d[\d,\.]*)\s*reviews?/i, /(\d[\d,\.]*)\s*مراجع/];
+          for (const pattern of patterns) {
+            const match = text.match(pattern);
+            if (match) {
+              details.reviews = match[1].replace(/,/g, '');
+              break;
+            }
+          }
+          if (details.reviews) break;
         }
         console.log('[Leedz Details] Reviews:', details.reviews);
         
-        // Category/Type
-        const categoryEl = document.querySelector('button[jsaction*="category"], span.DkEaL');
+        // ==================== Extract Category ====================
+        const categoryEl = findElement(SELECTORS.category);
         details.category = categoryEl?.textContent?.trim() || null;
         console.log('[Leedz Details] Category:', details.category);
         
-        // Look for info buttons/links with data
-        const infoButtons = document.querySelectorAll('button[data-item-id], a[data-item-id]');
-        infoButtons.forEach(btn => {
-          const itemId = btn.getAttribute('data-item-id');
-          const ariaLabel = btn.getAttribute('aria-label') || '';
-          const text = btn.textContent?.trim() || '';
+        // ==================== Extract Phone (Multi-Strategy) ====================
+        // Strategy 1: Direct selectors
+        const phoneElements = findAllElements(SELECTORS.phone);
+        for (const el of phoneElements) {
+          const ariaLabel = el.getAttribute('aria-label') || '';
+          const text = el.textContent?.trim() || '';
+          const href = el.getAttribute('href') || '';
           
-          // Phone
-          if (itemId?.includes('phone') || ariaLabel.includes('Phone') || ariaLabel.includes('هاتف')) {
-            const phoneMatch = (ariaLabel + ' ' + text).match(/[\d\s\-\+\(\)]{7,}/);
-            if (phoneMatch) details.phone = phoneMatch[0].trim();
+          // Try tel: href first
+          if (href.startsWith('tel:')) {
+            details.phone = href.replace('tel:', '').trim();
+            break;
           }
           
-          // Website
-          if (itemId?.includes('authority') || ariaLabel.includes('Website') || ariaLabel.includes('موقع')) {
-            const href = btn.getAttribute('href') || btn.querySelector('a')?.href;
-            if (href && !href.includes('google.com')) {
-              details.website = href;
+          // Try aria-label
+          const phoneFromLabel = extractPhoneFromText(ariaLabel);
+          if (phoneFromLabel) {
+            details.phone = phoneFromLabel;
+            break;
+          }
+          
+          // Try text content
+          const phoneFromText = extractPhoneFromText(text);
+          if (phoneFromText) {
+            details.phone = phoneFromText;
+            break;
+          }
+        }
+        
+        // Strategy 2: Look for tel: links anywhere
+        if (!details.phone) {
+          const telLinks = document.querySelectorAll('a[href^="tel:"]');
+          for (const link of telLinks) {
+            const phone = link.getAttribute('href').replace('tel:', '').trim();
+            if (phone && phone.replace(/\D/g, '').length >= 7) {
+              details.phone = phone;
+              break;
             }
           }
-          
-          // Address
-          if (itemId?.includes('address') || ariaLabel.includes('Address') || ariaLabel.includes('عنوان')) {
-            details.address = ariaLabel.replace(/^Address:\s*/i, '').trim() || text;
-          }
-        });
+        }
         
-        // Alternative: Look for specific divs with icons
-        const allDivs = document.querySelectorAll('div[role="button"], button');
-        allDivs.forEach(div => {
-          const text = div.textContent?.trim() || '';
-          const ariaLabel = div.getAttribute('aria-label') || '';
-          
-          // Phone pattern
-          if (!details.phone) {
-            const phoneMatch = text.match(/^[\d\s\-\+\(\)]{7,20}$/);
-            if (phoneMatch) details.phone = phoneMatch[0];
-          }
-          
-          // Website pattern
-          if (!details.website && text.match(/^(www\.|http|[a-z]+\.[a-z]{2,})/i)) {
-            if (!text.includes('google.com')) {
-              details.website = text.startsWith('http') ? text : 'https://' + text;
-            }
-          }
-        });
-        
-        // Look for address in the side panel
-        if (!details.address) {
-          const addressDivs = document.querySelectorAll('.rogA2c, .Io6YTe');
-          addressDivs.forEach(div => {
-            const text = div.textContent?.trim();
-            if (text && text.length > 10 && text.length < 200) {
-              if (!details.address || text.length > details.address.length) {
-                details.address = text;
+        // Strategy 3: Scan all buttons/divs for phone patterns
+        if (!details.phone) {
+          const allClickables = document.querySelectorAll('button, div[role="button"], [data-item-id]');
+          for (const el of allClickables) {
+            const text = el.textContent?.trim() || '';
+            const ariaLabel = el.getAttribute('aria-label') || '';
+            
+            // Check if this looks like a phone element
+            const combined = ariaLabel + ' ' + text;
+            if (combined.toLowerCase().includes('phone') || combined.includes('هاتف') || combined.includes('اتصال')) {
+              const phone = extractPhoneFromText(combined);
+              if (phone) {
+                details.phone = phone;
+                break;
               }
             }
-          });
-        }
-        
-        // Extract from aria-labels as fallback
-        const allButtons = document.querySelectorAll('[aria-label]');
-        allButtons.forEach(el => {
-          const label = el.getAttribute('aria-label') || '';
-          
-          if (!details.phone && (label.includes('Phone:') || label.includes('هاتف:'))) {
-            const match = label.match(/[\d\s\-\+\(\)]{7,}/);
-            if (match) details.phone = match[0].trim();
+            
+            // Check for standalone phone number
+            if (/^[\d\s\-\+\(\)]{7,20}$/.test(text)) {
+              details.phone = text;
+              break;
+            }
           }
-          
-          if (!details.address && (label.includes('Address:') || label.includes('عنوان:'))) {
-            details.address = label.replace(/^(Address|عنوان):\s*/i, '').trim();
-          }
-        });
-        
-        // Hours
-        const hoursEl = document.querySelector('[aria-label*="hour"], [aria-label*="ساعات"]');
-        if (hoursEl) {
-          details.hours = hoursEl.getAttribute('aria-label')?.replace(/^.*?:\s*/, '') || null;
         }
-        
         console.log('[Leedz Details] Phone:', details.phone);
+        
+        // ==================== Extract Website (Multi-Strategy) ====================
+        // Strategy 1: Direct selectors
+        const websiteElements = findAllElements(SELECTORS.website);
+        for (const el of websiteElements) {
+          const href = el.getAttribute('href') || el.querySelector('a')?.href;
+          const normalized = normalizeWebsite(href);
+          if (normalized) {
+            details.website = normalized;
+            break;
+          }
+          
+          // Try text content for URL
+          const text = el.textContent?.trim() || '';
+          if (text.match(/^(www\.|http|[a-z0-9][-a-z0-9]*\.[a-z]{2,})/i)) {
+            const normalizedText = normalizeWebsite(text);
+            if (normalizedText) {
+              details.website = normalizedText;
+              break;
+            }
+          }
+        }
+        
+        // Strategy 2: Look for external links
+        if (!details.website) {
+          const allLinks = document.querySelectorAll('a[href]');
+          for (const link of allLinks) {
+            const href = link.getAttribute('href');
+            if (href && !href.includes('google.com') && !href.includes('goo.gl') && !href.startsWith('tel:') && !href.startsWith('mailto:')) {
+              const ariaLabel = link.getAttribute('aria-label') || '';
+              if (ariaLabel.toLowerCase().includes('website') || ariaLabel.includes('موقع')) {
+                details.website = normalizeWebsite(href);
+                break;
+              }
+            }
+          }
+        }
+        
+        // Strategy 3: Scan for URL patterns in text
+        if (!details.website) {
+          const allElements = document.querySelectorAll('button, div[role="button"], span, div');
+          for (const el of allElements) {
+            const text = el.textContent?.trim() || '';
+            if (text.length < 100 && text.match(/^(www\.|http|[a-z0-9][-a-z0-9]*\.[a-z]{2,})/i)) {
+              if (!text.includes('google.com')) {
+                details.website = normalizeWebsite(text);
+                break;
+              }
+            }
+          }
+        }
         console.log('[Leedz Details] Website:', details.website);
+        
+        // ==================== Extract Address (Multi-Strategy) ====================
+        // Strategy 1: Direct selectors
+        const addressElements = findAllElements(SELECTORS.address);
+        for (const el of addressElements) {
+          const ariaLabel = el.getAttribute('aria-label') || '';
+          const text = el.textContent?.trim() || '';
+          
+          // Check aria-label for address
+          if (ariaLabel.toLowerCase().includes('address') || ariaLabel.includes('عنوان')) {
+            const cleanAddress = ariaLabel.replace(/^(Address|عنوان):\s*/i, '').trim();
+            if (cleanAddress.length > 5) {
+              details.address = cleanAddress;
+              break;
+            }
+          }
+          
+          // Check text content (should be reasonable length for address)
+          if (text.length > 10 && text.length < 200 && !text.match(/^\d[.,]\d/)) {
+            if (!details.address || text.length > details.address.length) {
+              details.address = text;
+            }
+          }
+        }
+        
+        // Strategy 2: Look for address in specific containers
+        if (!details.address) {
+          const addressContainers = document.querySelectorAll('.rogA2c, .Io6YTe, .LrzXr, [data-item-id*="address"]');
+          for (const container of addressContainers) {
+            const text = container.textContent?.trim();
+            if (text && text.length > 10 && text.length < 200) {
+              // Avoid phone numbers and ratings
+              if (!text.match(/^[\d\s\-\+\(\)]+$/) && !text.match(/^\d[.,]\d/)) {
+                details.address = text;
+                break;
+              }
+            }
+          }
+        }
         console.log('[Leedz Details] Address:', details.address);
+        
+        // ==================== Extract Hours ====================
+        const hoursElements = findAllElements(SELECTORS.hours);
+        for (const el of hoursElements) {
+          const ariaLabel = el.getAttribute('aria-label') || '';
+          if (ariaLabel) {
+            details.hours = ariaLabel.replace(/^.*?:\s*/, '').trim();
+            break;
+          }
+          const text = el.textContent?.trim();
+          if (text && text.length > 3) {
+            details.hours = text;
+            break;
+          }
+        }
+        console.log('[Leedz Details] Hours:', details.hours);
+        
+        // ==================== Extract Email (Bonus) ====================
+        const pageText = document.body.innerText || '';
+        const emailMatch = pageText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+        if (emailMatch) {
+          details.email = emailMatch[0];
+        }
+        console.log('[Leedz Details] Email:', details.email);
+        
         console.log('[Leedz Details] ========== EXTRACTION COMPLETE ==========');
+        console.log('[Leedz Details] Summary:', JSON.stringify(details, null, 2));
         
         return details;
       },
@@ -1221,152 +2061,335 @@ async function extractGoogleMapsResults(tabId, limit = 30, exactMatch = null) {
         console.log('[Leedz Extract] Search name:', searchName);
         console.log('[Leedz Extract] Page URL:', window.location.href);
         
+        // ==================== Selectors Configuration ====================
+        const SELECTORS = {
+          placeLinks: [
+            'a[href*="/maps/place/"]',
+            '.hfpxzc',
+            '[role="article"] a[href*="/maps/place/"]',
+          ],
+          feedContainer: [
+            'div[role="feed"]',
+            '.m6QErb.DxyBCb.kA9KIf.dS8AEf',
+            '.m6QErb[aria-label]',
+          ],
+          resultItems: [
+            'div[role="feed"] > div > div[jsaction]',
+            '.Nv2PK',
+            '[role="article"]',
+          ],
+          name: [
+            '.fontHeadlineSmall',
+            '.qBF1Pd',
+            '[class*="fontHeadline"]',
+            '.NrDZNb',
+            '.dbg0pd',
+          ],
+          rating: [
+            'span.MW4etd',
+            '.F7nice span[aria-hidden="true"]',
+            'span.ceNzKf',
+          ],
+          reviews: [
+            'span.UY7F9',
+            '.F7nice span:last-child',
+          ],
+          category: [
+            '.W4Efsd:first-child span',
+            '.W4Efsd span.W4Efsd',
+          ],
+          address: [
+            '.W4Efsd:last-child',
+            '.W4Efsd span:not(.MW4etd)',
+          ],
+          singlePlace: [
+            'h1.DUwDvf',
+            'h1.fontHeadlineLarge',
+            '[role="main"] h1',
+          ],
+        };
+        
+        // ==================== Helper Functions ====================
+        function findElement(container, selectors) {
+          for (const selector of selectors) {
+            try {
+              const el = container.querySelector(selector);
+              if (el) return el;
+            } catch (e) { /* invalid selector */ }
+          }
+          return null;
+        }
+        
+        function findAllElements(container, selectors) {
+          const found = new Set();
+          const results = [];
+          for (const selector of selectors) {
+            try {
+              container.querySelectorAll(selector).forEach(el => {
+                if (!found.has(el)) {
+                  found.add(el);
+                  results.push(el);
+                }
+              });
+            } catch (e) { /* invalid selector */ }
+          }
+          return results;
+        }
+        
+        function extractRating(container) {
+          const ratingEl = findElement(container, SELECTORS.rating);
+          if (ratingEl) {
+            const text = ratingEl.textContent?.trim();
+            if (text && /^\d[.,]?\d?$/.test(text)) {
+              return text.replace(',', '.');
+            }
+          }
+          // Fallback: search in text
+          const containerText = container.textContent || '';
+          const match = containerText.match(/(\d[.,]\d)\s*(?:★|\()/);
+          return match ? match[1].replace(',', '.') : null;
+        }
+        
+        function extractReviews(container) {
+          const reviewsEl = findElement(container, SELECTORS.reviews);
+          if (reviewsEl) {
+            const text = reviewsEl.textContent?.trim();
+            const match = text?.match(/\(?([\d,\.]+)\)?/);
+            if (match) return match[1].replace(/,/g, '');
+          }
+          // Fallback: search in text
+          const containerText = container.textContent || '';
+          const patterns = [/\((\d[\d,\.]*)\)/, /(\d[\d,\.]*)\s*reviews?/i];
+          for (const pattern of patterns) {
+            const match = containerText.match(pattern);
+            if (match) return match[1].replace(/,/g, '');
+          }
+          return null;
+        }
+        
+        function extractCategory(container) {
+          const categoryEl = findElement(container, SELECTORS.category);
+          if (categoryEl) {
+            const text = categoryEl.textContent?.trim();
+            // Filter out ratings and reviews
+            if (text && !text.match(/^\d/) && text.length < 50) {
+              return text.split('·')[0].trim();
+            }
+          }
+          return null;
+        }
+        
+        function extractAddress(container) {
+          const addressEl = findElement(container, SELECTORS.address);
+          if (addressEl) {
+            const text = addressEl.textContent?.trim();
+            // Filter out short text and ratings
+            if (text && text.length > 5 && !text.match(/^\d[.,]\d/)) {
+              // Clean up - remove category prefix if present
+              const parts = text.split('·');
+              return parts.length > 1 ? parts.slice(1).join('·').trim() : text;
+            }
+          }
+          return null;
+        }
+        
+        function calculateMatchScore(name, searchName) {
+          if (!searchName) return 100;
+          
+          const normalizedName = name.toLowerCase().replace(/[^\w\s\u0600-\u06FF]/g, '').trim();
+          const normalizedSearch = searchName.toLowerCase().replace(/[^\w\s\u0600-\u06FF]/g, '').trim();
+          
+          // Exact match
+          if (normalizedName === normalizedSearch) return 100;
+          
+          // Contains match
+          if (normalizedName.includes(normalizedSearch)) return 90;
+          if (normalizedSearch.includes(normalizedName)) return 85;
+          
+          // Word-based matching
+          const nameWords = normalizedName.split(/\s+/).filter(w => w.length > 1);
+          const searchWords = normalizedSearch.split(/\s+/).filter(w => w.length > 1);
+          
+          if (nameWords.length === 0 || searchWords.length === 0) return 30;
+          
+          let matchingWords = 0;
+          let partialMatches = 0;
+          
+          for (const sw of searchWords) {
+            for (const nw of nameWords) {
+              if (nw === sw) {
+                matchingWords++;
+                break;
+              } else if (nw.includes(sw) || sw.includes(nw)) {
+                partialMatches++;
+                break;
+              }
+            }
+          }
+          
+          const fullMatchScore = (matchingWords / searchWords.length) * 70;
+          const partialMatchScore = (partialMatches / searchWords.length) * 20;
+          
+          return Math.max(30, Math.round(fullMatchScore + partialMatchScore));
+        }
+        
+        // ==================== Main Extraction Logic ====================
         const items = [];
         const seenNames = new Set();
         
-        // Strategy 1: Look for place links directly (most reliable)
-        const placeLinks = document.querySelectorAll('a[href*="/maps/place/"]');
+        // ==================== Strategy 1: Place Links (Most Reliable) ====================
+        console.log('[Leedz Extract] Strategy 1: Looking for place links...');
+        const placeLinks = findAllElements(document, SELECTORS.placeLinks);
         console.log('[Leedz Extract] Found', placeLinks.length, 'place links');
         
-        if (placeLinks.length > 0) {
-          placeLinks.forEach((link, index) => {
-            if (items.length >= maxResults) return;
-            
-            // Get the parent container that has all the info
-            let container = link.closest('div[jsaction]') || link.parentElement?.parentElement?.parentElement;
-            if (!container) container = link;
-            
-            // Extract name from aria-label or link text
-            let name = link.getAttribute('aria-label') || '';
-            if (!name) {
-              // Try to find name in the container
-              const nameEl = container.querySelector('.fontHeadlineSmall, .qBF1Pd, [class*="fontHeadline"]');
-              name = nameEl?.textContent?.trim() || '';
-            }
-            
-            // If still no name, try the link's text content
-            if (!name) {
-              name = link.textContent?.trim() || '';
-            }
-            
-            // Clean up name - remove extra info
-            if (name.includes('·')) {
-              name = name.split('·')[0].trim();
-            }
-            
-            if (!name || name.length < 2) return;
-            
-            // Skip duplicates
-            const nameKey = name.toLowerCase().trim();
-            if (seenNames.has(nameKey)) return;
-            seenNames.add(nameKey);
-            
-            // Extract other info from container
-            const containerText = container.textContent || '';
-            
-            // Rating
-            let rating = null;
-            const ratingMatch = containerText.match(/(\d[.,]\d)\s*(?:★|\()/);
-            if (ratingMatch) rating = ratingMatch[1];
-            
-            // Reviews
-            let reviews = null;
-            const reviewsMatch = containerText.match(/\((\d[\d,\.]*)\)/);
-            if (reviewsMatch) reviews = reviewsMatch[1];
-            
-            // Address - look for text after the rating/reviews
-            let address = '';
-            const addressEl = container.querySelector('.W4Efsd');
-            if (addressEl) {
-              address = addressEl.textContent?.trim() || '';
-            }
-            
-            // Calculate match score for SINGLE search
-            let matchScore = 100;
-            if (searchName) {
-              const normalizedName = name.toLowerCase().replace(/[^\w\s\u0600-\u06FF]/g, '');
-              const normalizedSearch = searchName.toLowerCase().replace(/[^\w\s\u0600-\u06FF]/g, '');
-              
-              if (normalizedName === normalizedSearch) {
-                matchScore = 100;
-              } else if (normalizedName.includes(normalizedSearch) || normalizedSearch.includes(normalizedName)) {
-                matchScore = 80;
-              } else {
-                const nameWords = normalizedName.split(/\s+/);
-                const searchWords = normalizedSearch.split(/\s+/);
-                const commonWords = nameWords.filter(w => 
-                  searchWords.some(sw => sw.includes(w) || w.includes(sw))
-                );
-                matchScore = Math.max(30, (commonWords.length / Math.max(nameWords.length, searchWords.length)) * 100);
-              }
-            }
-            
-            console.log('[Leedz Extract] Found:', name, 'Score:', matchScore);
-            
-            items.push({
-              name,
-              rating,
-              reviews,
-              type: null,
-              address,
-              phone: null,
-              website: null,
-              source: 'google_maps',
-              sourceUrl: link.href || window.location.href,
-              matchScore,
-            });
-          });
-        }
-        
-        // Strategy 2: If no place links, try feed items
-        if (items.length === 0) {
-          console.log('[Leedz Extract] Trying feed items strategy...');
-          const feedItems = document.querySelectorAll('div[role="feed"] > div');
-          console.log('[Leedz Extract] Found', feedItems.length, 'feed items');
+        for (const link of placeLinks) {
+          if (items.length >= maxResults) break;
           
-          feedItems.forEach((item, index) => {
-            if (items.length >= maxResults) return;
-            
-            // Look for any text that looks like a business name
-            const allText = item.textContent || '';
-            const firstLine = allText.split('\n')[0]?.trim();
-            
-            if (firstLine && firstLine.length > 2 && firstLine.length < 100) {
-              const nameKey = firstLine.toLowerCase();
-              if (!seenNames.has(nameKey)) {
-                seenNames.add(nameKey);
-                console.log('[Leedz Extract] Found from feed:', firstLine);
-                items.push({
-                  name: firstLine,
-                  rating: null,
-                  reviews: null,
-                  type: null,
-                  address: null,
-                  phone: null,
-                  website: null,
-                  source: 'google_maps',
-                  sourceUrl: window.location.href,
-                  matchScore: 50,
-                });
-              }
-            }
+          // Get the parent container
+          let container = link.closest('div[jsaction]') || 
+                         link.closest('.Nv2PK') || 
+                         link.closest('[role="article"]') ||
+                         link.parentElement?.parentElement?.parentElement;
+          if (!container) container = link;
+          
+          // Extract name - multiple strategies
+          let name = '';
+          
+          // Try aria-label first (most reliable)
+          const ariaLabel = link.getAttribute('aria-label');
+          if (ariaLabel) {
+            name = ariaLabel.split('·')[0].trim();
+          }
+          
+          // Try name selectors
+          if (!name) {
+            const nameEl = findElement(container, SELECTORS.name);
+            name = nameEl?.textContent?.trim() || '';
+          }
+          
+          // Try link text
+          if (!name) {
+            name = link.textContent?.trim() || '';
+            if (name.includes('·')) name = name.split('·')[0].trim();
+          }
+          
+          // Validate name
+          if (!name || name.length < 2 || name.length > 150) continue;
+          
+          // Skip duplicates
+          const nameKey = name.toLowerCase().trim();
+          if (seenNames.has(nameKey)) continue;
+          seenNames.add(nameKey);
+          
+          // Extract other data
+          const rating = extractRating(container);
+          const reviews = extractReviews(container);
+          const category = extractCategory(container);
+          const address = extractAddress(container);
+          const matchScore = calculateMatchScore(name, searchName);
+          
+          console.log('[Leedz Extract] Found:', name, '| Rating:', rating, '| Score:', matchScore);
+          
+          items.push({
+            name,
+            rating,
+            reviews,
+            type: category,
+            address,
+            phone: null,
+            website: null,
+            source: 'google_maps',
+            sourceUrl: link.href || window.location.href,
+            matchScore,
           });
         }
         
-        // Strategy 3: Last resort - look for any business-like text
+        // ==================== Strategy 2: Feed Items ====================
         if (items.length === 0) {
-          console.log('[Leedz Extract] Trying last resort strategy...');
-          // Check if this is a single place view
-          const placeTitle = document.querySelector('h1.DUwDvf, h1[class*="header"]');
-          if (placeTitle) {
-            const name = placeTitle.textContent?.trim();
-            if (name) {
-              console.log('[Leedz Extract] Found single place:', name);
+          console.log('[Leedz Extract] Strategy 2: Looking for feed items...');
+          const feedContainer = findElement(document, SELECTORS.feedContainer);
+          
+          if (feedContainer) {
+            const feedItems = feedContainer.querySelectorAll(':scope > div');
+            console.log('[Leedz Extract] Found', feedItems.length, 'feed items');
+            
+            for (const item of feedItems) {
+              if (items.length >= maxResults) break;
+              
+              // Try to find a link inside
+              const link = item.querySelector('a[href*="/maps/place/"]');
+              const nameEl = findElement(item, SELECTORS.name);
+              
+              let name = '';
+              if (link) {
+                name = link.getAttribute('aria-label')?.split('·')[0].trim() || '';
+              }
+              if (!name && nameEl) {
+                name = nameEl.textContent?.trim() || '';
+              }
+              if (!name) {
+                // Last resort: first line of text
+                const text = item.textContent?.trim() || '';
+                name = text.split('\n')[0]?.trim() || '';
+              }
+              
+              if (!name || name.length < 2 || name.length > 150) continue;
+              
+              const nameKey = name.toLowerCase().trim();
+              if (seenNames.has(nameKey)) continue;
+              seenNames.add(nameKey);
+              
+              const rating = extractRating(item);
+              const reviews = extractReviews(item);
+              const category = extractCategory(item);
+              const address = extractAddress(item);
+              const matchScore = calculateMatchScore(name, searchName);
+              
+              console.log('[Leedz Extract] Found from feed:', name);
+              
               items.push({
                 name,
-                rating: null,
-                reviews: null,
-                type: null,
+                rating,
+                reviews,
+                type: category,
+                address,
+                phone: null,
+                website: null,
+                source: 'google_maps',
+                sourceUrl: link?.href || window.location.href,
+                matchScore,
+              });
+            }
+          }
+        }
+        
+        // ==================== Strategy 3: Single Place View ====================
+        if (items.length === 0) {
+          console.log('[Leedz Extract] Strategy 3: Checking for single place view...');
+          const placeTitle = findElement(document, SELECTORS.singlePlace);
+          
+          if (placeTitle) {
+            const name = placeTitle.textContent?.trim();
+            if (name && name.length > 1) {
+              console.log('[Leedz Extract] Found single place:', name);
+              
+              // Try to extract more details from the page
+              const ratingEl = document.querySelector('div.F7nice span[aria-hidden="true"]');
+              const rating = ratingEl?.textContent?.trim()?.replace(',', '.') || null;
+              
+              const reviewsEl = document.querySelector('span[aria-label*="review"]');
+              const reviewsText = reviewsEl?.getAttribute('aria-label') || '';
+              const reviewsMatch = reviewsText.match(/([\d,]+)/);
+              const reviews = reviewsMatch ? reviewsMatch[1].replace(/,/g, '') : null;
+              
+              const categoryEl = document.querySelector('button[jsaction*="category"], span.DkEaL');
+              const category = categoryEl?.textContent?.trim() || null;
+              
+              items.push({
+                name,
+                rating,
+                reviews,
+                type: category,
                 address: null,
                 phone: null,
                 website: null,
@@ -1378,13 +2401,55 @@ async function extractGoogleMapsResults(tabId, limit = 30, exactMatch = null) {
           }
         }
         
-        // Sort by match score for SINGLE search
+        // ==================== Strategy 4: Article Elements ====================
+        if (items.length === 0) {
+          console.log('[Leedz Extract] Strategy 4: Looking for article elements...');
+          const articles = document.querySelectorAll('[role="article"]');
+          console.log('[Leedz Extract] Found', articles.length, 'articles');
+          
+          for (const article of articles) {
+            if (items.length >= maxResults) break;
+            
+            const nameEl = findElement(article, SELECTORS.name);
+            const name = nameEl?.textContent?.trim();
+            
+            if (!name || name.length < 2) continue;
+            
+            const nameKey = name.toLowerCase().trim();
+            if (seenNames.has(nameKey)) continue;
+            seenNames.add(nameKey);
+            
+            const link = article.querySelector('a[href*="/maps/place/"]');
+            const matchScore = calculateMatchScore(name, searchName);
+            
+            console.log('[Leedz Extract] Found from article:', name);
+            
+            items.push({
+              name,
+              rating: extractRating(article),
+              reviews: extractReviews(article),
+              type: extractCategory(article),
+              address: extractAddress(article),
+              phone: null,
+              website: null,
+              source: 'google_maps',
+              sourceUrl: link?.href || window.location.href,
+              matchScore,
+            });
+          }
+        }
+        
+        // ==================== Sort Results ====================
         if (searchName) {
           items.sort((a, b) => b.matchScore - a.matchScore);
         }
         
         console.log('[Leedz Extract] ========== EXTRACTION COMPLETE ==========');
         console.log('[Leedz Extract] Total items extracted:', items.length);
+        if (items.length > 0) {
+          console.log('[Leedz Extract] Sample:', items[0]);
+        }
+        
         return items;
       },
     });
@@ -1467,8 +2532,58 @@ async function executeGoogleMapsSearch(jobPlan) {
     
     console.log('[Leedz] Search completed, found:', results.length, 'results');
     
-    // Step 3: Validate results
-    if (results.length === 0) {
+    // Step 3: Apply Smart Matching for SINGLE search
+    let validatedResults = results;
+    
+    if (finalSearchType === 'SINGLE' && results.length > 0) {
+      await onProgress(65, 'جاري التحقق من التطابق الذكي...');
+      
+      // Get settings for match threshold
+      const settingsData = await getStorageData(['leedz_extension_settings']);
+      const settings = settingsData.leedz_extension_settings || {};
+      const threshold = settings.matchThreshold || MATCH_THRESHOLD;
+      
+      console.log('[Leedz] Applying smart match with threshold:', threshold);
+      
+      // Filter results by smart match
+      const searchQuery = { name: query, query, city };
+      validatedResults = filterResultsBySmartMatch(searchQuery, results, threshold);
+      
+      console.log('[Leedz] Smart match results:', validatedResults.length, 'of', results.length);
+      
+      if (validatedResults.length === 0) {
+        // لم يتم العثور على تطابق دقيق
+        console.log('[Leedz] No results met the match threshold');
+        await onProgress(90, `لم يتم العثور على تطابق دقيق (الحد الأدنى: ${threshold}%)`);
+        
+        await markJobComplete(jobId, {
+          status: 'SUCCESS',
+          resultsCount: 0,
+          savedCount: 0,
+          searchType: finalSearchType,
+          duration: Date.now() - startTime,
+          message: `لم يتم العثور على نتيجة تطابق ${threshold}%+`,
+          rawResultsCount: results.length,
+        });
+        
+        broadcastToSidePanel({
+          type: 'JOB_COMPLETED',
+          jobId,
+          results: [],
+          savedCount: 0,
+          message: `لم يتم العثور على تطابق دقيق (${results.length} نتيجة لم تحقق الحد الأدنى ${threshold}%)`,
+        });
+        
+        return;
+      }
+      
+      // Log best match details
+      const bestMatch = validatedResults[0];
+      console.log('[Leedz] Best match:', bestMatch.name, 'Score:', bestMatch.matchScore);
+    }
+    
+    // Step 3b: Validate results
+    if (validatedResults.length === 0) {
       console.log('[Leedz] No results found');
       await onProgress(90, 'لم يتم العثور على نتائج');
       
@@ -1493,9 +2608,9 @@ async function executeGoogleMapsSearch(jobPlan) {
     }
     
     // Step 4: Save leads to database
-    await onProgress(70, `تم العثور على ${results.length} نتيجة، جاري الحفظ...`);
+    await onProgress(70, `تم العثور على ${validatedResults.length} نتيجة، جاري الحفظ...`);
     
-    const leads = results.map(r => ({
+    const leads = validatedResults.map(r => ({
       companyName: r.name,
       industry: finalSearchType === 'SINGLE' ? null : query,
       city: city || null,

@@ -625,6 +625,7 @@ const ProspectingPage: React.FC = () => {
                           <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest">الموقع</th>
                           <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest text-center">التواصل</th>
                           <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest text-center">التقييم</th>
+                          <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase tracking-widest text-center">التطابق</th>
                           <th className="px-6 py-4"></th>
                         </tr>
                       </thead>
@@ -712,6 +713,23 @@ const ProspectingPage: React.FC = () => {
                                 )}
                               </div>
                             </td>
+                            <td className="px-6 py-5">
+                              <div className="flex items-center justify-center">
+                                {(lead as any).metadata?.matchScore ? (
+                                  <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+                                    (lead as any).metadata.matchScore >= 90 
+                                      ? 'bg-green-100 text-green-700' 
+                                      : (lead as any).metadata.matchScore >= 70 
+                                        ? 'bg-amber-100 text-amber-700'
+                                        : 'bg-gray-100 text-gray-600'
+                                  }`}>
+                                    {(lead as any).metadata.matchScore}%
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-gray-300">-</span>
+                                )}
+                              </div>
+                            </td>
                             <td className="px-6 py-5 text-left">
                               <button className="text-gray-300 group-hover:text-blue-600 transition-all transform group-hover:-translate-x-1">
                                 <ChevronLeft size={24} />
@@ -748,11 +766,24 @@ const ProspectingPage: React.FC = () => {
                       </div>
                       
                       <h3 className="font-bold text-gray-900 text-lg mb-1">{lead.companyName}</h3>
-                      {lead.industry && (
-                        <span className="inline-block text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg mb-3">
-                          {lead.industry}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2 mb-3">
+                        {lead.industry && (
+                          <span className="inline-block text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
+                            {lead.industry}
+                          </span>
+                        )}
+                        {(lead as any).metadata?.matchScore && (
+                          <span className={`inline-block text-xs font-bold px-2 py-1 rounded-lg ${
+                            (lead as any).metadata.matchScore >= 90 
+                              ? 'bg-green-100 text-green-700' 
+                              : (lead as any).metadata.matchScore >= 70 
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {(lead as any).metadata.matchScore}%
+                          </span>
+                        )}
+                      </div>
                       
                       <div className="space-y-2 text-sm text-gray-500">
                         {lead.city && (

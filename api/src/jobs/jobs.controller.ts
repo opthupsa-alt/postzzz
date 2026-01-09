@@ -53,6 +53,15 @@ export class JobsController {
     return this.jobsService.findByTenant(user.tenantId, { status, limit });
   }
 
+  @Get('dashboard-stats')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permissions.JOB_VIEW)
+  @ApiOperation({ summary: 'Get jobs dashboard statistics' })
+  @ApiResponse({ status: 200, description: 'Jobs statistics' })
+  async getDashboardStats(@CurrentUser() user: CurrentUserPayload) {
+    return this.jobsService.getDashboardStats(user.tenantId);
+  }
+
   @Get(':id')
   @UseGuards(PermissionsGuard)
   @RequirePermissions(Permissions.JOB_VIEW)
