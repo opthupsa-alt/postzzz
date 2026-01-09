@@ -9,6 +9,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { IsString, IsNumber, IsBoolean, IsOptional } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AIProviderService } from '../ai-provider/ai-provider.service';
 import { PromptTemplateService } from '../ai-provider/prompt-template.service';
@@ -18,17 +19,56 @@ interface AuthRequest extends Request {
 }
 
 class UpdateAISettingsDto {
+  @IsOptional()
+  @IsString()
   provider?: string;
+
+  @IsOptional()
+  @IsString()
   modelName?: string;
+
+  @IsOptional()
+  @IsString()
   apiKey?: string;
+
+  @IsOptional()
+  @IsString()
   apiEndpoint?: string;
+
+  @IsOptional()
+  @IsNumber()
   maxTokens?: number;
+
+  @IsOptional()
+  @IsNumber()
   temperature?: number;
+
+  @IsOptional()
+  @IsBoolean()
   enableWebSearch?: boolean;
+
+  @IsOptional()
+  @IsString()
+  reasoningEffort?: string;
+
+  @IsOptional()
+  @IsString()
   systemPrompt?: string;
+
+  @IsOptional()
+  @IsString()
   userPromptTemplate?: string;
+
+  @IsOptional()
+  @IsNumber()
   maxRequestsPerMinute?: number;
+
+  @IsOptional()
+  @IsNumber()
   maxRequestsPerDay?: number;
+
+  @IsOptional()
+  @IsNumber()
   estimatedCostPerRequest?: number;
 }
 

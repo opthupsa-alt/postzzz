@@ -91,6 +91,7 @@ export class AIProviderService {
     maxTokens?: number;
     temperature?: number;
     enableWebSearch?: boolean;
+    reasoningEffort?: string;
     systemPrompt?: string;
     userPromptTemplate?: string;
     maxRequestsPerMinute?: number;
