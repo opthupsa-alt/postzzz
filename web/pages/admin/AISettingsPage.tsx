@@ -105,9 +105,25 @@ const AISettingsPage: React.FC = () => {
   const saveSettings = async () => {
     try {
       setSaving(true);
+      // Send only the fields that the DTO accepts
+      const payload = {
+        provider: settings.provider,
+        modelName: settings.modelName,
+        apiKey: settings.apiKey,
+        apiEndpoint: settings.apiEndpoint,
+        maxTokens: Number(settings.maxTokens),
+        temperature: Number(settings.temperature),
+        enableWebSearch: settings.enableWebSearch,
+        reasoningEffort: settings.reasoningEffort,
+        systemPrompt: settings.systemPrompt,
+        userPromptTemplate: settings.userPromptTemplate,
+        maxRequestsPerMinute: Number(settings.maxRequestsPerMinute),
+        maxRequestsPerDay: Number(settings.maxRequestsPerDay),
+        estimatedCostPerRequest: Number(settings.estimatedCostPerRequest),
+      };
       await apiRequest('/admin/ai-settings', {
         method: 'PUT',
-        body: JSON.stringify(settings),
+        body: JSON.stringify(payload),
       });
       setIsConfigured(!!settings.apiKey && !settings.apiKey.startsWith('****'));
     } catch (error) {
