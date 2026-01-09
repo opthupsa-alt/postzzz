@@ -265,14 +265,174 @@ const SurveyReportViewer: React.FC<SurveyReportViewerProps> = ({
 
         {/* Digital Footprint */}
         {activeSection === 'digital' && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
               <Globe className="text-purple-600" size={24} />
               جرد الحضور الرقمي
             </h3>
+
+            {/* Social Summary Card */}
+            {report.lead?.metadata?.socialSummary && (
+              <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl border border-purple-100">
+                <h4 className="font-bold text-purple-700 mb-3 flex items-center gap-2">
+                  📊 ملخص الحضور على السوشيال ميديا
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="text-center p-3 bg-white rounded-lg">
+                    <div className="text-2xl font-black text-purple-600">
+                      {report.lead.metadata.socialSummary.totalPlatforms || 0}
+                    </div>
+                    <div className="text-xs text-gray-500">منصات</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg">
+                    <div className="text-2xl font-black text-green-600">
+                      {report.lead.metadata.socialSummary.activePlatforms || 0}
+                    </div>
+                    <div className="text-xs text-gray-500">نشطة</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg">
+                    <div className="text-2xl font-black text-blue-600">
+                      {(report.lead.metadata.socialSummary.totalFollowers || 0).toLocaleString()}
+                    </div>
+                    <div className="text-xs text-gray-500">متابع</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg">
+                    <div className="text-2xl font-black text-yellow-600">
+                      {report.lead.metadata.socialSummary.verifiedAccounts || 0}
+                    </div>
+                    <div className="text-xs text-gray-500">موثق</div>
+                  </div>
+                  <div className="text-center p-3 bg-white rounded-lg">
+                    <div className={`text-2xl font-black ${
+                      (report.lead.metadata.socialSummary.overallScore || 0) >= 70 ? 'text-green-600' :
+                      (report.lead.metadata.socialSummary.overallScore || 0) >= 40 ? 'text-yellow-600' :
+                      'text-red-600'
+                    }`}>
+                      {report.lead.metadata.socialSummary.overallScore || 0}%
+                    </div>
+                    <div className="text-xs text-gray-500">التقييم</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Social Profiles Cards */}
+            {report.lead?.metadata?.socialProfiles && Object.keys(report.lead.metadata.socialProfiles).length > 0 && (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {Object.entries(report.lead.metadata.socialProfiles).map(([platform, data]: [string, any]) => {
+                  if (!data || data.error) return null;
+                  
+                  const platformIcons: Record<string, string> = {
+                    instagram: '📸',
+                    twitter: '🐦',
+                    facebook: '📘',
+                    linkedin: '💼',
+                    tiktok: '🎵',
+                    youtube: '📺',
+                    snapchat: '👻',
+                  };
+                  
+                  const platformNames: Record<string, string> = {
+                    instagram: 'انستقرام',
+                    twitter: 'تويتر/X',
+                    facebook: 'فيسبوك',
+                    linkedin: 'لينكدإن',
+                    tiktok: 'تيك توك',
+                    youtube: 'يوتيوب',
+                    snapchat: 'سناب شات',
+                  };
+
+                  return (
+                    <div key={platform} className="p-4 bg-white rounded-xl border border-gray-200 hover:shadow-md transition-shadow">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">{platformIcons[platform] || '🌐'}</span>
+                          <span className="font-bold text-gray-900">{platformNames[platform] || platform}</span>
+                        </div>
+                        {data.isVerified && (
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full flex items-center gap-1">
+                            <CheckCircle2 size={12} />
+                            موثق
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2 text-sm">
+                        {(data.username || data.handle) && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">المستخدم:</span>
+                            <span className="font-bold text-gray-700">@{data.username || data.handle}</span>
+                          </div>
+                        )}
+                        {(data.followers || data.subscribers) && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">المتابعين:</span>
+                            <span className="font-bold text-purple-600">{data.followers || data.subscribers}</span>
+                          </div>
+                        )}
+                        {data.following && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">يتابع:</span>
+                            <span className="text-gray-700">{data.following}</span>
+                          </div>
+                        )}
+                        {(data.posts || data.videos || data.tweets) && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">المنشورات:</span>
+                            <span className="text-gray-700">{data.posts || data.videos || data.tweets}</span>
+                          </div>
+                        )}
+                        {data.isPrivate && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">الخصوصية:</span>
+                            <span className="text-yellow-600 font-bold">حساب خاص</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {(data.bio || data.description || data.about) && (
+                        <p className="mt-3 text-xs text-gray-500 line-clamp-2 border-t pt-2">
+                          {(data.bio || data.description || data.about).substring(0, 100)}...
+                        </p>
+                      )}
+
+                      {data.analysis && (
+                        <div className="mt-3 pt-2 border-t">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-500">جودة الحساب:</span>
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                              data.analysis.status === 'EXCELLENT' ? 'bg-green-100 text-green-700' :
+                              data.analysis.status === 'GOOD' ? 'bg-blue-100 text-blue-700' :
+                              data.analysis.status === 'NEEDS_IMPROVEMENT' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {data.analysis.score}/100
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {data.url && (
+                        <a
+                          href={data.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-3 flex items-center justify-center gap-1 text-xs text-blue-600 hover:underline"
+                        >
+                          <ExternalLink size={12} />
+                          زيارة الحساب
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             
-            {report.digitalFootprint?.length > 0 ? (
+            {/* Digital Footprint Table */}
+            {report.digitalFootprint?.length > 0 && (
               <div className="overflow-x-auto">
+                <h4 className="font-bold text-gray-700 mb-3">تفاصيل الحضور الرقمي</h4>
                 <table className="w-full">
                   <thead>
                     <tr className="bg-gray-50">
@@ -322,7 +482,10 @@ const SurveyReportViewer: React.FC<SurveyReportViewerProps> = ({
                   </tbody>
                 </table>
               </div>
-            ) : (
+            )}
+
+            {/* Empty State */}
+            {!report.digitalFootprint?.length && !report.lead?.metadata?.socialProfiles && (
               <div className="p-8 text-center text-gray-400 bg-gray-50 rounded-xl">
                 <Globe size={48} className="mx-auto mb-4 opacity-50" />
                 <p>لا توجد بيانات حضور رقمي متاحة</p>
