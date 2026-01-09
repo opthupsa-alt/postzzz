@@ -14,6 +14,13 @@ export interface AICompletionRequest {
   reasoningEffort?: ReasoningEffort;
 }
 
+export interface AIAnnotation {
+  type: string;
+  url?: string;
+  title?: string;
+  index?: number;
+}
+
 export interface AICompletionResponse {
   content: string;
   promptTokens: number;
@@ -21,6 +28,7 @@ export interface AICompletionResponse {
   totalTokens: number;
   model: string;
   finishReason: string;
+  annotations?: AIAnnotation[];
 }
 
 export interface AIProviderConfig {
