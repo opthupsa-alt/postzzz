@@ -1,6 +1,15 @@
 import { AICompletionRequest, AICompletionResponse, AIProviderConfig } from '../interfaces/ai-provider.interface';
 import { BaseAIProvider } from './base.provider';
 
+// Models that use max_completion_tokens instead of max_tokens
+// This includes o1, o3, GPT-5.x and newer models
+const MODELS_WITH_COMPLETION_TOKENS = [
+  'o1', 'o1-mini', 'o1-preview',
+  'o3', 'o3-mini',
+  'gpt-5', 'gpt-5.1', 'gpt-5.2',
+  'gpt-4.1', 'gpt-4o', 'gpt-4o-mini',
+];
+
 // GPT-5.2 Thinking models that support reasoning_effort
 const THINKING_MODELS = [
   'gpt-5.2',
@@ -9,6 +18,8 @@ const THINKING_MODELS = [
   'gpt-5.1-thinking',
   'gpt-5',
   'gpt-5-thinking',
+  'o1', 'o1-mini', 'o1-preview',
+  'o3', 'o3-mini',
 ];
 
 export class OpenAIProvider extends BaseAIProvider {
@@ -25,21 +36,37 @@ export class OpenAIProvider extends BaseAIProvider {
    */
   private isThinkingModel(): boolean {
     const modelName = this.config.modelName.toLowerCase();
-    return THINKING_MODELS.some(m => modelName.includes(m.toLowerCase()));
+    return THINKING_MODELS.some(m => modelName.toLowerCase().includes(m.toLowerCase()));
+  }
+
+  /**
+   * Check if model uses max_completion_tokens instead of max_tokens
+   */
+  private usesCompletionTokens(): boolean {
+    const modelName = this.config.modelName.toLowerCase();
+    return MODELS_WITH_COMPLETION_TOKENS.some(m => modelName.includes(m.toLowerCase()));
   }
 
   async complete(request: AICompletionRequest): Promise<AICompletionResponse> {
     this.validateConfig();
 
+    const maxTokens = request.maxTokens || this.config.maxTokens;
+    
     // Build request body
     const requestBody: any = {
       model: this.config.modelName,
       messages: request.messages,
-      max_tokens: request.maxTokens || this.config.maxTokens,
-      temperature: request.temperature ?? this.config.temperature,
     };
 
-    // Add reasoning_effort for GPT-5.2 Thinking models
+    // Use max_completion_tokens for newer models, max_tokens for older ones
+    if (this.usesCompletionTokens()) {
+      requestBody.max_completion_tokens = maxTokens;
+    } else {
+      requestBody.max_tokens = maxTokens;
+      requestBody.temperature = request.temperature ?? this.config.temperature;
+    }
+
+    // Add reasoning_effort for Thinking models (o1, o3, GPT-5.x)
     const reasoningEffort = request.reasoningEffort || this.config.reasoningEffort;
     if (reasoningEffort && this.isThinkingModel()) {
       requestBody.reasoning_effort = reasoningEffort;
