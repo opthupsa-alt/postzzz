@@ -450,14 +450,14 @@ export class SurveyService {
     
     const platforms = [
       { name: 'website', ar: 'موقع', patterns: [/(?:موقع|website)[:\s]*(https?:\/\/[^\s]+)/i] },
-      { name: 'google_maps', ar: 'خرائط جوجل', patterns: [/(?:maps|خرائط)[:\s]*(https?:\/\/[^\s]+)/i] },
-      { name: 'instagram', ar: 'انستقرام', patterns: [/(?:instagram|انستقرام)[:\s]*@?([^\s,]+)/i, /instagram\.com\/([^\s/]+)/i] },
-      { name: 'twitter', ar: 'تويتر/X', patterns: [/(?:twitter|x\.com|تويتر)[:\s]*@?([^\s,]+)/i] },
-      { name: 'facebook', ar: 'فيسبوك', patterns: [/(?:facebook|فيسبوك)[:\s]*([^\s,]+)/i] },
-      { name: 'linkedin', ar: 'لينكدإن', patterns: [/(?:linkedin|لينكد)[:\s]*([^\s,]+)/i] },
-      { name: 'tiktok', ar: 'تيك توك', patterns: [/(?:tiktok|تيك توك)[:\s]*@?([^\s,]+)/i] },
-      { name: 'snapchat', ar: 'سناب شات', patterns: [/(?:snapchat|سناب)[:\s]*@?([^\s,]+)/i] },
-      { name: 'youtube', ar: 'يوتيوب', patterns: [/(?:youtube|يوتيوب)[:\s]*([^\s,]+)/i] },
+      { name: 'google_maps', ar: 'خرائط جوجل', patterns: [/(?:maps|خرائط|google maps|GBP)[:\s]*(https?:\/\/[^\s]+)/i] },
+      { name: 'instagram', ar: 'انستقرام', patterns: [/(?:instagram|انستقرام|IG)[:\s]*@?([^\s,]+)/i, /instagram\.com\/([^\s/]+)/i] },
+      { name: 'twitter', ar: 'تويتر/X', patterns: [/(?:twitter|x\.com|تويتر|X)[:\s]*@?([^\s,]+)/i] },
+      { name: 'facebook', ar: 'فيسبوك', patterns: [/(?:facebook|فيسبوك|FB)[:\s]*([^\s,]+)/i] },
+      { name: 'linkedin', ar: 'لينكدإن', patterns: [/(?:linkedin|لينكد|LI)[:\s]*([^\s,]+)/i] },
+      { name: 'tiktok', ar: 'تيك توك', patterns: [/(?:tiktok|تيك توك|TT)[:\s]*@?([^\s,]+)/i] },
+      { name: 'snapchat', ar: 'سناب شات', patterns: [/(?:snapchat|سناب|Snap)[:\s]*@?([^\s,]+)/i] },
+      { name: 'youtube', ar: 'يوتيوب', patterns: [/(?:youtube|يوتيوب|YT)[:\s]*([^\s,]+)/i] },
     ];
     
     const searchContent = sectionContent || fullContent;
@@ -466,6 +466,11 @@ export class SurveyService {
       let found = false;
       let url = '';
       let details = '';
+      let followers: number | undefined;
+      let isVerified = false;
+      let rating: number | undefined;
+      let reviewCount: number | undefined;
+      let lastActivity: string | undefined;
       
       for (const pattern of platform.patterns) {
         const match = searchContent.match(pattern);
@@ -484,18 +489,52 @@ export class SurveyService {
       
       let status: 'EXISTS' | 'NOT_FOUND' | 'UNCERTAIN' = found ? 'EXISTS' : 'UNCERTAIN';
       
-      // Look for explicit status in content
-      const platformSection = searchContent.match(new RegExp(`${platform.ar}[\\s\\S]*?(?=\\n[-•]|\\n\\n|$)`, 'i'));
+      // Look for platform-specific section in content
+      const platformSection = searchContent.match(new RegExp(`${platform.ar}[\\s\\S]*?(?=\\n[-•📱]|\\n\\n|$)`, 'i'));
       if (platformSection) {
+        const sectionText = platformSection[0];
+        
+        // Detect status
         for (const sp of statusPatterns) {
           for (const p of sp.patterns) {
-            if (p.test(platformSection[0])) {
+            if (p.test(sectionText)) {
               status = sp.status as any;
               break;
             }
           }
         }
-        details = platformSection[0].replace(new RegExp(platform.ar, 'gi'), '').trim().substring(0, 200);
+        
+        // Extract followers count
+        const followersMatch = sectionText.match(/(?:متابع|followers?)[:\s]*([0-9,.]+[KMكم]?)/i) ||
+                              sectionText.match(/([0-9,.]+[KMكم]?)\s*(?:متابع|followers?)/i);
+        if (followersMatch) {
+          followers = this.parseFollowerCount(followersMatch[1]);
+        }
+        
+        // Check verification
+        isVerified = /موثق|verified|✓|✔|badge/i.test(sectionText);
+        
+        // Extract rating (for Google Maps)
+        const ratingMatch = sectionText.match(/(?:تقييم|rating)[:\s]*([0-9.]+)/i) ||
+                           sectionText.match(/([0-9.]+)\s*(?:نجوم|stars?|\/\s*5)/i);
+        if (ratingMatch) {
+          rating = parseFloat(ratingMatch[1]);
+        }
+        
+        // Extract review count
+        const reviewMatch = sectionText.match(/(?:مراجع|reviews?)[:\s]*([0-9,]+)/i) ||
+                           sectionText.match(/([0-9,]+)\s*(?:مراجع|reviews?)/i);
+        if (reviewMatch) {
+          reviewCount = parseInt(reviewMatch[1].replace(/,/g, ''));
+        }
+        
+        // Extract last activity
+        const activityMatch = sectionText.match(/(?:آخر نشاط|last activity|آخر منشور)[:\s]*([^\n]+)/i);
+        if (activityMatch) {
+          lastActivity = activityMatch[1].trim();
+        }
+        
+        details = sectionText.replace(new RegExp(platform.ar, 'gi'), '').trim().substring(0, 300);
       }
       
       footprint.push({
@@ -503,10 +542,42 @@ export class SurveyService {
         status,
         url: url || undefined,
         details: details || undefined,
+        followers,
+        isVerified,
+        rating,
+        reviewCount,
+        lastActivity,
       });
     }
     
     return footprint;
+  }
+
+  /**
+   * Parse follower count from string (handles K, M, etc.)
+   */
+  private parseFollowerCount(text: string): number | undefined {
+    if (!text) return undefined;
+    
+    const cleaned = text.replace(/[,،\s]/g, '').trim();
+    const match = cleaned.match(/([\d.]+)\s*([KMكم])?/i);
+    if (!match) return undefined;
+
+    let num = parseFloat(match[1]);
+    const suffix = (match[2] || '').toUpperCase();
+
+    switch (suffix) {
+      case 'K':
+      case 'ك':
+        num *= 1000;
+        break;
+      case 'M':
+      case 'م':
+        num *= 1000000;
+        break;
+    }
+
+    return Math.round(num);
   }
 
   /**
