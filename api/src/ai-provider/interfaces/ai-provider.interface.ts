@@ -3,11 +3,15 @@ export interface AIMessage {
   content: string;
 }
 
+// Reasoning effort levels for GPT-5.2 Thinking models
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+
 export interface AICompletionRequest {
   messages: AIMessage[];
   maxTokens?: number;
   temperature?: number;
   enableWebSearch?: boolean;
+  reasoningEffort?: ReasoningEffort;
 }
 
 export interface AICompletionResponse {
@@ -26,6 +30,7 @@ export interface AIProviderConfig {
   maxTokens: number;
   temperature: number;
   enableWebSearch: boolean;
+  reasoningEffort?: ReasoningEffort;
 }
 
 export interface IAIProvider {

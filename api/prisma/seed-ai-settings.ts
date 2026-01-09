@@ -92,17 +92,18 @@ async function seedAISettings() {
     data: {
       id: 'default',
       provider: 'OPENAI',
-      modelName: 'gpt-4-turbo',
+      modelName: 'gpt-5.2', // GPT-5.2 Thinking - الأحدث
       apiKey: null, // Must be set by Super Admin
       apiEndpoint: null,
-      maxTokens: 8000,
+      maxTokens: 16000,
       temperature: 0.7,
       enableWebSearch: true,
+      reasoningEffort: 'high', // تحليل عميق ودقيق
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
       userPromptTemplate: DEFAULT_USER_PROMPT_TEMPLATE,
       maxRequestsPerMinute: 10,
       maxRequestsPerDay: 1000,
-      estimatedCostPerRequest: 0.5,
+      estimatedCostPerRequest: 2.0, // GPT-5.2 أغلى
     },
   });
 

@@ -510,9 +510,10 @@ model AISettings {
   apiEndpoint     String?     // For custom providers
   
   // Model Parameters
-  maxTokens       Int         @default(8000)
+  maxTokens       Int         @default(16000)
   temperature     Float       @default(0.7)
   enableWebSearch Boolean     @default(true)
+  reasoningEffort String      @default("high") // none, minimal, low, medium, high, xhigh
   
   // Prompts
   systemPrompt       String   @db.Text

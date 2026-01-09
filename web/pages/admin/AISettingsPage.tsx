@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../../lib/api';
 
+type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+
 interface AISettings {
   provider: string;
   modelName: string;
@@ -24,6 +26,7 @@ interface AISettings {
   maxTokens: number;
   temperature: number;
   enableWebSearch: boolean;
+  reasoningEffort: ReasoningEffort;
   systemPrompt: string;
   userPromptTemplate: string;
   maxRequestsPerMinute: number;
@@ -33,23 +36,43 @@ interface AISettings {
 
 const DEFAULT_SETTINGS: AISettings = {
   provider: 'OPENAI',
-  modelName: 'gpt-4-turbo',
+  modelName: 'gpt-5.2',
   apiKey: null,
   apiEndpoint: null,
-  maxTokens: 8000,
+  maxTokens: 16000,
   temperature: 0.7,
   enableWebSearch: true,
+  reasoningEffort: 'high',
   systemPrompt: '',
   userPromptTemplate: '',
   maxRequestsPerMinute: 10,
   maxRequestsPerDay: 1000,
-  estimatedCostPerRequest: 0.5,
+  estimatedCostPerRequest: 2.0,
 };
 
+const REASONING_EFFORTS: { id: ReasoningEffort; name: string; description: string }[] = [
+  { id: 'none', name: 'بدون تفكير', description: 'أسرع استجابة، بدون تحليل عميق' },
+  { id: 'minimal', name: 'أدنى', description: 'تحليل سطحي سريع' },
+  { id: 'low', name: 'منخفض', description: 'تحليل خفيف' },
+  { id: 'medium', name: 'متوسط', description: 'توازن بين السرعة والدقة' },
+  { id: 'high', name: 'عالي', description: 'تحليل عميق ودقيق (موصى به)' },
+  { id: 'xhigh', name: 'أقصى', description: 'أعمق تحليل ممكن، أبطأ وأغلى' },
+];
+
 const PROVIDERS = [
-  { id: 'OPENAI', name: 'OpenAI', models: ['gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'] },
-  { id: 'GEMINI', name: 'Google Gemini', models: ['gemini-pro', 'gemini-ultra'], disabled: true },
-  { id: 'ANTHROPIC', name: 'Anthropic Claude', models: ['claude-3-opus', 'claude-3-sonnet'], disabled: true },
+  { 
+    id: 'OPENAI', 
+    name: 'OpenAI', 
+    models: [
+      { id: 'gpt-5.2', name: 'GPT-5.2 Thinking', description: 'الأحدث - تحليل عميق مع reasoning_effort', recommended: true },
+      { id: 'gpt-5.2-pro', name: 'GPT-5.2 Pro', description: 'الأعلى دقة، أبطأ وأغلى' },
+      { id: 'gpt-5.2-chat-latest', name: 'GPT-5.2 Instant', description: 'سريع للمحادثات البسيطة' },
+      { id: 'gpt-5.1', name: 'GPT-5.1 Thinking', description: 'الجيل السابق' },
+      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'موديل قديم مستقر' },
+    ] 
+  },
+  { id: 'GEMINI', name: 'Google Gemini', models: [{ id: 'gemini-pro', name: 'Gemini Pro' }], disabled: true },
+  { id: 'ANTHROPIC', name: 'Anthropic Claude', models: [{ id: 'claude-3-opus', name: 'Claude 3 Opus' }], disabled: true },
 ];
 
 const AISettingsPage: React.FC = () => {
@@ -206,9 +229,9 @@ const AISettingsPage: React.FC = () => {
                 onChange={(e) => setSettings({ ...settings, modelName: e.target.value })}
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               >
-                {selectedProvider?.models.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
+                {selectedProvider?.models.map((model: any) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name} {model.recommended ? '⭐' : ''}
                   </option>
                 ))}
               </select>
@@ -289,6 +312,26 @@ const AISettingsPage: React.FC = () => {
                 <span>دقيق</span>
                 <span>إبداعي</span>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">
+                مستوى التفكير (Reasoning Effort)
+              </label>
+              <select
+                value={settings.reasoningEffort}
+                onChange={(e) => setSettings({ ...settings, reasoningEffort: e.target.value as ReasoningEffort })}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              >
+                {REASONING_EFFORTS.map((effort) => (
+                  <option key={effort.id} value={effort.id}>
+                    {effort.name} - {effort.description}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">
+                ⚡ يعمل فقط مع موديلات GPT-5.x Thinking
+              </p>
             </div>
 
             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">

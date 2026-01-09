@@ -46,6 +46,7 @@ export class AIProviderService {
       maxTokens: settings.maxTokens,
       temperature: settings.temperature,
       enableWebSearch: settings.enableWebSearch,
+      reasoningEffort: (settings as any).reasoningEffort || 'high',
     };
 
     switch (settings.provider) {
