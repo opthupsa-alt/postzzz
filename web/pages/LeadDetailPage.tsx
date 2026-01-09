@@ -37,6 +37,10 @@ import WhatsAppModal from '../components/WhatsAppModal';
 import EvidenceList from '../components/EvidenceList';
 import ReportViewer from '../components/ReportViewer';
 import { showToast } from '../components/NotificationToast';
+import SurveyButton from '../components/survey/SurveyButton';
+import SurveyProgress from '../components/survey/SurveyProgress';
+import SurveyReportViewer from '../components/survey/SurveyReportViewer';
+import { apiRequest } from '../lib/api';
 
 const LeadDetailPage: React.FC = () => {
   const { id } = useParams();
@@ -60,6 +64,9 @@ const LeadDetailPage: React.FC = () => {
   const [showWhatsApp, setShowWhatsApp] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null);
+  const [surveyReportId, setSurveyReportId] = useState<string | null>(null);
+  const [surveyStatus, setSurveyStatus] = useState<'PENDING' | 'GENERATING' | 'COMPLETED' | 'FAILED' | null>(null);
+  const [surveyReport, setSurveyReport] = useState<any>(null);
   
   const lead = leads.find(l => l.id === id) || savedLeads.find(l => l.id === id);
 
@@ -75,96 +82,58 @@ const LeadDetailPage: React.FC = () => {
   const leadReport = reports[lead.id];
   const leadActivities = activities[lead.id] || [];
 
-  const handleRunSurvey = () => {
+  const handleRunSurvey = async () => {
     setIsSurveyRunning(true);
-    const jobId = Math.random().toString(36).substr(2, 9);
+    setSurveyStatus('PENDING');
     
-    showToast('JOB', 'بدء المسح الآلي', `جاري تحليل نشاط ${lead.companyName} الرقمي...`);
+    showToast('JOB', 'بدء التحليل الذكي', `جاري تحليل ${lead.companyName} باستخدام AI EBI...`);
 
-    addJob({
-      id: jobId,
-      type: 'SURVEY',
-      status: JobStatus.RUNNING,
-      progress: 0,
-      message: 'بدء تحليل نشاط الشركة الرقمي...',
-      createdAt: new Date().toISOString()
-    });
+    try {
+      // Call the real API
+      const response = await apiRequest<{ reportId: string; message: string }>('/survey/generate', {
+        method: 'POST',
+        body: JSON.stringify({ leadId: lead.id }),
+      });
 
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 10;
-      if (progress >= 100) {
-        clearInterval(interval);
-        
-        const mockEvidence: Evidence[] = [
-          {
-            id: `ev-${Math.random().toString(36).substr(2, 5)}`,
-            leadId: lead.id,
-            title: `عن ${lead.companyName} - الموقع الرسمي`,
-            source: lead.website || 'website.com',
-            url: lead.website || '#',
-            type: 'WEBSITE',
-            snippet: `${lead.companyName} هي شركة رائدة متخصصة في تقديم الحلول المتكاملة في قطاع ${lead.industry} منذ أكثر من 10 سنوات...`,
-            timestamp: new Date().toISOString()
-          },
-          {
-            id: `ev-${Math.random().toString(36).substr(2, 5)}`,
-            leadId: lead.id,
-            title: `مراجعات العملاء على Google Maps`,
-            source: 'Google Maps',
-            url: '#',
-            type: 'REVIEWS',
-            snippet: "خدمة ممتازة واحترافية عالية في التعامل. الفريق التقني متعاون جداً وسريع الاستجابة.",
-            timestamp: new Date().toISOString()
+      setSurveyReportId(response.reportId);
+      setSurveyStatus('GENERATING');
+
+      // Poll for status
+      const pollStatus = async () => {
+        try {
+          const statusResponse = await apiRequest<{ status: string; error?: string }>(`/survey/${response.reportId}/status`);
+          
+          if (statusResponse.status === 'COMPLETED') {
+            // Fetch the full report
+            const reportResponse = await apiRequest<any>(`/survey/${response.reportId}`);
+            setSurveyReport(reportResponse);
+            setSurveyStatus('COMPLETED');
+            setIsSurveyRunning(false);
+            showToast('SUCCESS', 'اكتمل التقرير', `تم إنشاء تقرير AI EBI لـ ${lead.companyName}`);
+            setActiveTab('report');
+          } else if (statusResponse.status === 'FAILED') {
+            setSurveyStatus('FAILED');
+            setIsSurveyRunning(false);
+            showToast('ERROR', 'فشل التحليل', statusResponse.error || 'حدث خطأ أثناء إنشاء التقرير');
+          } else {
+            // Still processing, poll again
+            setTimeout(pollStatus, 3000);
           }
-        ];
-        mockEvidence.forEach(ev => addEvidence(lead.id, ev));
+        } catch (error) {
+          console.error('Error polling survey status:', error);
+          setTimeout(pollStatus, 5000);
+        }
+      };
 
-        const mockReport: Report = {
-          leadId: lead.id,
-          summary: `تمثل ${lead.companyName} فرصة مبيعات مثالية نظراً لنمو نشاطها الرقمي وحاجتها لخدمات تحسين الكفاءة التقنية.`,
-          lastUpdated: new Date().toISOString(),
-          sections: [
-            {
-              title: "تحليل الاحتياج التقني",
-              content: "بناءً على التقنيات المكتشفة في الموقع الإلكتروني، يظهر أن الشركة تستخدم أنظمة قديمة في إدارة العملاء، مما يجعل عرضنا للـ CRM الجديد جذاباً جداً لهم.",
-              confidence: 'HIGH',
-              evidenceIds: [mockEvidence[0].id]
-            },
-            {
-              title: "سمعة الشركة ومكانتها في السوق",
-              content: "تحظى الشركة بتقييمات إيجابية جداً (4.8/5) مما يدل على استقرار مالي وقدرة على الاستثمار في الأدوات الجديدة.",
-              confidence: 'MEDIUM',
-              evidenceIds: [mockEvidence[1].id]
-            },
-            {
-                title: "الحالة المالية المتوقعة",
-                content: "لم يتم العثور على تقارير مالية منشورة، لذا فإن القدرة الشرائية مصنفة كـ 'غير مؤكدة'.",
-                confidence: 'LOW',
-                evidenceIds: []
-              }
-          ]
-        };
-        setReport(lead.id, mockReport);
+      // Start polling after a short delay
+      setTimeout(pollStatus, 2000);
 
-        addActivity(lead.id, {
-          id: Math.random().toString(36).substr(2, 9),
-          leadId: lead.id,
-          type: 'SURVEY',
-          description: 'اكتمل الفحص الآلي وصدور التقرير الذكي',
-          timestamp: new Date().toISOString(),
-          user: 'النظام الآلي'
-        });
-
-        updateJob(jobId, { status: JobStatus.SUCCESS, progress: 100, message: 'اكتمل المسح الآلي وصدور التقرير' });
-        showToast('SUCCESS', 'اكتمل التقرير', `تم استخراج الأدلة وبناء التقرير الذكي لـ ${lead.companyName}`);
-        setIsSurveyRunning(false);
-        setActiveTab('report');
-      } else {
-        const msgs = ['البحث في السجلات التجارية...', 'تحليل الموقع الإلكتروني...', 'استخراج التقنيات المستخدمة...', 'تحليل حضور التواصل الاجتماعي...'];
-        updateJob(jobId, { progress, message: msgs[Math.floor(progress / 25)] });
-      }
-    }, 400);
+    } catch (error: any) {
+      console.error('Error starting survey:', error);
+      setSurveyStatus('FAILED');
+      setIsSurveyRunning(false);
+      showToast('ERROR', 'خطأ', error.message || 'فشل بدء التحليل');
+    }
   };
 
   const getStatusLabel = (s: Lead['status']) => {
@@ -257,14 +226,11 @@ const LeadDetailPage: React.FC = () => {
             <MessageCircle size={24} />
             <span>تواصل الآن</span>
           </button>
-          <button 
+          <SurveyButton 
             onClick={handleRunSurvey}
-            disabled={isSurveyRunning}
-            className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-2 hover:bg-blue-700 shadow-xl shadow-blue-200 transition-all active:scale-95 disabled:opacity-50"
-          >
-            <FileSearch size={24} />
-            <span>فحص آلي (Survey)</span>
-          </button>
+            isLoading={isSurveyRunning}
+            size="lg"
+          />
         </div>
       </div>
 
@@ -463,7 +429,49 @@ const LeadDetailPage: React.FC = () => {
               )}
 
               {activeTab === 'report' && (
-                <ReportViewer report={leadReport} />
+                <>
+                  {/* Show Survey Progress if running */}
+                  {surveyStatus && surveyStatus !== 'COMPLETED' && (
+                    <div className="mb-6">
+                      <SurveyProgress 
+                        status={surveyStatus} 
+                        onClose={() => {
+                          setSurveyStatus(null);
+                          if (surveyStatus === 'COMPLETED') {
+                            // Already handled
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Show AI EBI Report if available */}
+                  {surveyReport && (
+                    <SurveyReportViewer 
+                      report={surveyReport}
+                      onRegenerate={handleRunSurvey}
+                    />
+                  )}
+                  
+                  {/* Fallback to old report viewer */}
+                  {!surveyReport && leadReport && (
+                    <ReportViewer report={leadReport} />
+                  )}
+                  
+                  {/* No report available */}
+                  {!surveyReport && !leadReport && !surveyStatus && (
+                    <div className="text-center py-20 text-gray-400">
+                      <FileText size={48} className="mx-auto mb-4 opacity-50" />
+                      <p className="font-bold">لا يوجد تقرير</p>
+                      <p className="text-sm mt-2">اضغط على زر "سيرفيه AI" لإنشاء تقرير ذكي</p>
+                      <SurveyButton 
+                        onClick={handleRunSurvey} 
+                        isLoading={isSurveyRunning}
+                        size="lg"
+                      />
+                    </div>
+                  )}
+                </>
               )}
 
               {activeTab === 'activity' && (

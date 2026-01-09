@@ -18,6 +18,8 @@ import { GatewayModule } from './gateway/gateway.module';
 import { AgentModule } from './agent/agent.module';
 import { AuditModule } from './audit/audit.module';
 import { ExtensionSettingsModule } from './extension-settings/extension-settings.module';
+import { AIProviderModule } from './ai-provider/ai-provider.module';
+import { SurveyModule } from './survey/survey.module';
 
 @Module({
   imports: [
@@ -66,6 +68,8 @@ import { ExtensionSettingsModule } from './extension-settings/extension-settings
     GatewayModule,
     AgentModule,
     ExtensionSettingsModule,
+    AIProviderModule,
+    SurveyModule,
   ],
 })
 export class AppModule {}

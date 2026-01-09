@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Shield, LayoutDashboard, Building2, Users, CreditCard, Settings, LogOut, Database } from 'lucide-react';
+import { Shield, LayoutDashboard, Building2, Users, CreditCard, Settings, LogOut, Database, Brain } from 'lucide-react';
 import { logout } from '../lib/api';
 
 const AdminLayout: React.FC = () => {
@@ -11,6 +11,7 @@ const AdminLayout: React.FC = () => {
     { to: '/admin/data-bank', icon: Database, label: 'بنك البيانات' },
     { to: '/admin/plans', icon: CreditCard, label: 'الباقات' },
     { to: '/admin/subscriptions', icon: CreditCard, label: 'الاشتراكات' },
+    { to: '/admin/ai-settings', icon: Brain, label: 'إعدادات AI' },
     { to: '/admin/settings', icon: Settings, label: 'الإعدادات' },
   ];
 

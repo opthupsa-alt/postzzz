@@ -31,6 +31,7 @@ import AdminSubscriptions from './pages/admin/AdminSubscriptions';
 import AdminSettings from './pages/admin/AdminSettings';
 import AdminTenantDetail from './pages/admin/AdminTenantDetail';
 import AdminDataBank from './pages/admin/AdminDataBank';
+import AISettingsPage from './pages/admin/AISettingsPage';
 import ExtensionSettingsPage from './pages/ExtensionSettingsPage';
 
 const App = () => {
@@ -58,6 +59,7 @@ const App = () => {
           <Route path="plans" element={<AdminPlans />} />
           <Route path="subscriptions" element={<AdminSubscriptions />} />
           <Route path="settings" element={<AdminSettings />} />
+          <Route path="ai-settings" element={<AISettingsPage />} />
         </Route>
 
         {/* User Panel Routes - Regular Users Only */}

@@ -32,6 +32,7 @@ model Tenant {
   subscription  Subscription?
   usageCounters UsageCounter[]
   users         User[]
+  surveyUsage   SurveyUsage[]
 
   @@map("tenants")
 }
@@ -56,6 +57,7 @@ model User {
   reports         Report[]
   defaultTenant   Tenant?      @relation(fields: [defaultTenantId], references: [id])
   extensionSettings ExtensionSettings?
+  surveyUsage     SurveyUsage[]
 
   @@map("users")
 }
@@ -281,6 +283,7 @@ enum ReportType {
   COMPANY_PROFILE
   MARKET_RESEARCH
   COMPETITOR_ANALYSIS
+  AI_EBI_SURVEY
 }
 
 model Report {
@@ -297,6 +300,27 @@ model Report {
   updatedAt   DateTime     @updatedAt
   completedAt DateTime?
   createdById String
+  
+  // AI EBI Survey Fields
+  aiProvider       String?      // OPENAI, GEMINI, etc.
+  aiModel          String?      // gpt-4.5-turbo, etc.
+  promptTokens     Int?
+  completionTokens Int?
+  totalTokens      Int?
+  processingTimeMs Int?
+  
+  // Structured Content for AI EBI Survey
+  executiveSummary   Json?      // ملخص تنفيذي
+  identityAnchors    Json?      // تثبيت الهوية
+  digitalFootprint   Json?      // جرد الحضور الرقمي
+  gapAnalysis        Json?      // تحليل الفجوات
+  priorities         Json?      // الأولويات
+  serviceMapping     Json?      // خدمات OP-Target
+  packages           Json?      // الباقات المقترحة
+  competitors        Json?      // المنافسون
+  salesEnablement    Json?      // مواد المندوب
+  crmCard            Json?      // بطاقة CRM
+  rawResponse        String?    @db.Text  // استجابة AI الخام
 
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   lead        Lead?        @relation(fields: [leadId], references: [id])
@@ -325,6 +349,7 @@ model Plan {
   leadsLimit      Int            @default(100)
   searchesLimit   Int            @default(10)
   messagesLimit   Int            @default(50)
+  surveysLimit    Int            @default(-1)  // AI EBI Surveys limit
   
   // Features (JSON array of feature keys)
   features        String[]       @default([])
@@ -378,6 +403,7 @@ enum UsageMetric {
   LEADS
   SEARCHES
   MESSAGES
+  SURVEYS
 }
 
 model UsageCounter {
@@ -463,5 +489,70 @@ model ExtensionSettings {
   updatedAt DateTime @updatedAt
 
   @@map("extension_settings")
+}
+
+// ==================== AI Settings (Super Admin) ====================
+
+enum AIProvider {
+  OPENAI
+  GEMINI
+  ANTHROPIC
+  CUSTOM
+}
+
+model AISettings {
+  id              String      @id @default("default")
+  
+  // Provider Configuration
+  provider        AIProvider  @default(OPENAI)
+  modelName       String      @default("gpt-4.5-turbo")
+  apiKey          String?     // Encrypted in application layer
+  apiEndpoint     String?     // For custom providers
+  
+  // Model Parameters
+  maxTokens       Int         @default(8000)
+  temperature     Float       @default(0.7)
+  enableWebSearch Boolean     @default(true)
+  
+  // Prompts
+  systemPrompt       String   @db.Text
+  userPromptTemplate String   @db.Text
+  
+  // Rate Limits
+  maxRequestsPerMinute  Int   @default(10)
+  maxRequestsPerDay     Int   @default(1000)
+  
+  // Cost Tracking
+  estimatedCostPerRequest Decimal @default(0.50) @db.Decimal(10, 4)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  updatedById     String?
+
+  @@map("ai_settings")
+}
+
+// ==================== Survey Usage Tracking ====================
+
+model SurveyUsage {
+  id              String   @id @default(uuid())
+  tenantId        String
+  userId          String
+  reportId        String
+  
+  // Usage Metrics
+  tokensUsed      Int
+  estimatedCost   Decimal  @db.Decimal(10, 4)
+  processingTimeMs Int
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id])
+  
+  @@index([tenantId, createdAt])
+  @@index([userId, createdAt])
+  @@map("survey_usage")
 }
 
