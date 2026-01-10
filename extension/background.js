@@ -467,6 +467,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return { success: false, error: error.message };
           }
 
+        case 'GET_RECENT_SEARCH':
+          // Get most recent search from API
+          try {
+            const recentSearches = await apiRequest('/search-history/recent?limit=1');
+            if (recentSearches && recentSearches.length > 0) {
+              // Get full details including results
+              const fullSearch = await apiRequest(`/search-history/${recentSearches[0].id}`);
+              return { success: true, search: fullSearch };
+            }
+            return { success: false, message: 'No recent searches' };
+          } catch (error) {
+            console.error('[Leedz] Get recent search error:', error);
+            return { success: false, error: error.message };
+          }
+
         default:
           throw new Error(`Unknown message type: ${message.type}`);
       }
@@ -2716,10 +2731,27 @@ async function executeGoogleMapsSearch(jobPlan) {
     
     console.log('[Leedz] Job completed successfully');
     
+    // Save results to chrome.storage.local for persistence across refreshes
+    try {
+      await chrome.storage.local.set({
+        leedz_cached_results: {
+          results: validatedResults,
+          searchType: finalSearchType,
+          timestamp: Date.now(),
+          query,
+          city,
+        }
+      });
+      console.log('[Leedz] ✓ Results cached in storage:', validatedResults.length);
+    } catch (cacheError) {
+      console.error('[Leedz] Failed to cache results:', cacheError.message);
+    }
+    
     broadcastToSidePanel({
       type: 'JOB_COMPLETED',
       jobId,
-      results,
+      results: validatedResults,
+      searchType: finalSearchType,
       savedCount,
       duration: Date.now() - startTime,
     });

@@ -214,10 +214,11 @@ async function saveResultsToStorage(results, searchType) {
 }
 
 /**
- * Load cached results from chrome.storage.local
+ * Load cached results from chrome.storage.local or from API
  */
 async function loadResultsFromStorage() {
   try {
+    // First try chrome.storage.local
     const data = await chrome.storage.local.get('leedz_cached_results');
     const cached = data.leedz_cached_results;
     
@@ -225,17 +226,21 @@ async function loadResultsFromStorage() {
       // Check if results are not too old (24 hours)
       const maxAge = 24 * 60 * 60 * 1000; // 24 hours
       if (Date.now() - cached.timestamp < maxAge) {
-        console.log('[Leedz] Loaded cached results:', cached.results.length);
+        console.log('[Leedz] Loaded cached results from storage:', cached.results.length);
         cachedResults = cached.results;
         currentSearchType = cached.searchType || 'BULK';
-        displayCachedResults(cached.results, cached.searchType);
+        displayCachedResults(cached.results, cached.searchType, cached.query);
         return true;
       } else {
         console.log('[Leedz] Cached results expired, clearing...');
         await clearCachedResults();
       }
     }
-    return false;
+    
+    // If no local cache, try to load from API (database)
+    console.log('[Leedz] No local cache, trying to load from API...');
+    const loaded = await loadResultsFromAPI();
+    return loaded;
   } catch (error) {
     console.error('[Leedz] Failed to load cached results:', error);
     return false;
@@ -243,9 +248,47 @@ async function loadResultsFromStorage() {
 }
 
 /**
+ * Load last search results from API (database)
+ */
+async function loadResultsFromAPI() {
+  try {
+    const response = await sendMessage({ type: 'GET_RECENT_SEARCH' });
+    
+    if (response?.success && response.search && response.search.results) {
+      const search = response.search;
+      const results = search.results || [];
+      
+      if (results.length > 0) {
+        console.log('[Leedz] Loaded results from API:', results.length);
+        cachedResults = results;
+        currentSearchType = search.searchType || 'BULK';
+        
+        // Cache locally for faster access
+        await chrome.storage.local.set({
+          leedz_cached_results: {
+            results,
+            searchType: search.searchType,
+            timestamp: new Date(search.createdAt).getTime(),
+            query: search.query,
+            city: search.city,
+          }
+        });
+        
+        displayCachedResults(results, search.searchType, search.query);
+        return true;
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error('[Leedz] Failed to load results from API:', error);
+    return false;
+  }
+}
+
+/**
  * Display cached results without re-saving
  */
-function displayCachedResults(results, searchType) {
+function displayCachedResults(results, searchType, query = null) {
   if (recentResultsSection) recentResultsSection.style.display = 'block';
   if (resultsCount) resultsCount.textContent = results.length;
   
