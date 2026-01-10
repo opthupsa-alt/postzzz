@@ -20,6 +20,7 @@ import { AuditModule } from './audit/audit.module';
 import { ExtensionSettingsModule } from './extension-settings/extension-settings.module';
 import { AIProviderModule } from './ai-provider/ai-provider.module';
 import { SurveyModule } from './survey/survey.module';
+import { SearchHistoryModule } from './search-history/search-history.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { SurveyModule } from './survey/survey.module';
     ExtensionSettingsModule,
     AIProviderModule,
     SurveyModule,
+    SearchHistoryModule,
   ],
 })
 export class AppModule {}

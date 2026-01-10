@@ -33,6 +33,7 @@ model Tenant {
   usageCounters UsageCounter[]
   users         User[]
   surveyUsage   SurveyUsage[]
+  searchHistory SearchHistory[]
 
   @@map("tenants")
 }
@@ -58,6 +59,7 @@ model User {
   defaultTenant   Tenant?      @relation(fields: [defaultTenantId], references: [id])
   extensionSettings ExtensionSettings?
   surveyUsage     SurveyUsage[]
+  searchHistory   SearchHistory[]
 
   @@map("users")
 }
@@ -555,5 +557,55 @@ model SurveyUsage {
   @@index([tenantId, createdAt])
   @@index([userId, createdAt])
   @@map("survey_usage")
+}
+
+// ==================== Search History ====================
+
+enum SearchType {
+  SINGLE
+  BULK
+}
+
+model SearchHistory {
+  id              String      @id @default(uuid())
+  tenantId        String
+  userId          String
+  
+  // Search Parameters
+  query           String              // استعلام البحث
+  city            String?             // المدينة
+  country         String?             // الدولة
+  searchType      SearchType          // نوع البحث (SINGLE/BULK)
+  
+  // Results Summary
+  resultsCount    Int         @default(0)   // عدد النتائج
+  savedCount      Int         @default(0)   // عدد النتائج المحفوظة كـ Leads
+  
+  // Full Results (JSON array of all results)
+  results         Json?               // جميع النتائج بتفاصيلها
+  
+  // Search Metadata
+  searchLayers    String[]    @default([])  // الطبقات المستخدمة (googleMaps, googleSearch, socialMedia)
+  matchThreshold  Int?                // حد التطابق المستخدم
+  duration        Int?                // مدة البحث بالمللي ثانية
+  
+  // Status
+  status          String      @default("COMPLETED")  // COMPLETED, FAILED, PARTIAL
+  errorMessage    String?
+  
+  // Job Reference (optional)
+  jobId           String?
+  
+  // Timestamps
+  createdAt       DateTime    @default(now())
+  
+  // Relations
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User        @relation(fields: [userId], references: [id])
+  
+  @@index([tenantId, createdAt])
+  @@index([userId, createdAt])
+  @@index([tenantId, query])
+  @@map("search_history")
 }
 

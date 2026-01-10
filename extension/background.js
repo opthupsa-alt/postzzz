@@ -160,6 +160,24 @@ async function apiRequest(endpoint, options = {}) {
   return response.json();
 }
 
+/**
+ * Save search history to database
+ * @param {Object} searchData - Search data to save
+ */
+async function saveSearchHistory(searchData) {
+  try {
+    const result = await apiRequest('/search-history', {
+      method: 'POST',
+      body: JSON.stringify(searchData),
+    });
+    console.log('[Leedz] Search history saved:', result.id);
+    return result;
+  } catch (error) {
+    console.error('[Leedz] Failed to save search history:', error.message);
+    throw error;
+  }
+}
+
 // ==================== Auth Functions ====================
 
 async function login(email, password) {
@@ -2662,7 +2680,30 @@ async function executeGoogleMapsSearch(jobPlan) {
       await onProgress(90, `تم العثور على ${results.length} نتيجة (فشل الحفظ)`);
     }
     
-    // Step 5: Mark job complete
+    // Step 5: Save search history to database
+    await onProgress(92, 'جاري حفظ سجل البحث...');
+    
+    try {
+      await saveSearchHistory({
+        query,
+        city,
+        country: country || platformConfig?.defaultCountry || 'السعودية',
+        searchType: finalSearchType,
+        resultsCount: results.length,
+        savedCount,
+        results: validatedResults,
+        searchLayers: ['googleMaps'],
+        matchThreshold: platformConfig?.matchThreshold,
+        duration: Date.now() - startTime,
+        status: 'COMPLETED',
+        jobId,
+      });
+      console.log('[Leedz] ✓ Search history saved');
+    } catch (historyError) {
+      console.error('[Leedz] Failed to save search history:', historyError.message);
+    }
+    
+    // Step 6: Mark job complete
     await onProgress(95, 'جاري إنهاء العملية...');
     
     await markJobComplete(jobPlan.jobId, {
