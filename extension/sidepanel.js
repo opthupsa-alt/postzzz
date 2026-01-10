@@ -46,6 +46,8 @@ let isLoading = false;
 let platformConfig = null;
 let currentJob = null;
 let extensionSettings = null;
+let currentSearchType = 'BULK'; // Track search type for display
+let cachedResults = []; // Cache results locally
 
 // ==================== Helpers ====================
 
@@ -150,9 +152,18 @@ function hideActiveJob() {
   if (activeJobSection) activeJobSection.style.display = 'none';
 }
 
-function showResults(results) {
+function showResults(results, searchType = null) {
   if (recentResultsSection) recentResultsSection.style.display = 'block';
   if (resultsCount) resultsCount.textContent = results.length;
+  
+  // Update search type if provided
+  if (searchType) {
+    currentSearchType = searchType;
+  }
+  
+  // Cache results in memory and storage
+  cachedResults = results;
+  saveResultsToStorage(results, currentSearchType);
   
   if (!resultsList) return;
   
@@ -182,6 +193,106 @@ function showResults(results) {
   }
 }
 
+// ==================== Results Persistence ====================
+
+/**
+ * Save results to chrome.storage.local for persistence
+ */
+async function saveResultsToStorage(results, searchType) {
+  try {
+    await chrome.storage.local.set({
+      leedz_cached_results: {
+        results,
+        searchType,
+        timestamp: Date.now(),
+      }
+    });
+    console.log('[Leedz] Results saved to storage:', results.length);
+  } catch (error) {
+    console.error('[Leedz] Failed to save results:', error);
+  }
+}
+
+/**
+ * Load cached results from chrome.storage.local
+ */
+async function loadResultsFromStorage() {
+  try {
+    const data = await chrome.storage.local.get('leedz_cached_results');
+    const cached = data.leedz_cached_results;
+    
+    if (cached && cached.results && cached.results.length > 0) {
+      // Check if results are not too old (24 hours)
+      const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+      if (Date.now() - cached.timestamp < maxAge) {
+        console.log('[Leedz] Loaded cached results:', cached.results.length);
+        cachedResults = cached.results;
+        currentSearchType = cached.searchType || 'BULK';
+        displayCachedResults(cached.results, cached.searchType);
+        return true;
+      } else {
+        console.log('[Leedz] Cached results expired, clearing...');
+        await clearCachedResults();
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error('[Leedz] Failed to load cached results:', error);
+    return false;
+  }
+}
+
+/**
+ * Display cached results without re-saving
+ */
+function displayCachedResults(results, searchType) {
+  if (recentResultsSection) recentResultsSection.style.display = 'block';
+  if (resultsCount) resultsCount.textContent = results.length;
+  
+  if (!resultsList) return;
+  
+  if (results.length === 0) {
+    resultsList.innerHTML = '<div style="text-align: center; padding: 16px; color: #64748b;">لم يتم العثور على نتائج</div>';
+    return;
+  }
+  
+  const searchTypeLabel = searchType === 'SINGLE' ? '🏢 نتيجة البحث عن شركة' : '📋 نتائج البحث المتعدد';
+  
+  resultsList.innerHTML = `
+    <div style="font-size: 12px; color: #3b82f6; margin-bottom: 8px; font-weight: 600;">${searchTypeLabel}</div>
+    <div style="font-size: 10px; color: #94a3b8; margin-bottom: 8px;">📌 نتائج محفوظة</div>
+  `;
+  
+  resultsList.innerHTML += results.slice(0, 10).map(r => `
+    <div style="background: #f8fafc; border-radius: 8px; padding: 10px; margin-bottom: 6px;">
+      <div style="font-weight: 600; color: #1e293b; font-size: 13px;">${r.name || 'بدون اسم'}</div>
+      ${r.type ? `<div style="font-size: 11px; color: #64748b;">${r.type}</div>` : ''}
+      ${r.address ? `<div style="font-size: 11px; color: #64748b;">📍 ${r.address.substring(0, 50)}${r.address.length > 50 ? '...' : ''}</div>` : ''}
+      ${r.phone ? `<div style="font-size: 11px; color: #10b981;">📞 ${r.phone}</div>` : ''}
+      ${r.rating ? `<div style="font-size: 11px; color: #f59e0b;">⭐ ${r.rating} ${r.reviews ? `(${r.reviews})` : ''}</div>` : ''}
+      ${r.matchScore ? `<div style="font-size: 10px; color: #8b5cf6;">مطابقة: ${Math.round(r.matchScore)}%</div>` : ''}
+    </div>
+  `).join('');
+  
+  if (results.length > 10) {
+    resultsList.innerHTML += `<div style="text-align: center; padding: 8px; color: #3b82f6; font-size: 12px;">+ ${results.length - 10} نتيجة أخرى في المنصة</div>`;
+  }
+}
+
+/**
+ * Clear cached results
+ */
+async function clearCachedResults() {
+  try {
+    await chrome.storage.local.remove('leedz_cached_results');
+    cachedResults = [];
+    if (recentResultsSection) recentResultsSection.style.display = 'none';
+    console.log('[Leedz] Cached results cleared');
+  } catch (error) {
+    console.error('[Leedz] Failed to clear cached results:', error);
+  }
+}
+
 // Listen for messages from background
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'WS_CONNECTED' || message.type === 'WS_AUTHENTICATED' || message.type === 'POLLING_STARTED') {
@@ -203,7 +314,9 @@ chrome.runtime.onMessage.addListener((message) => {
   } else if (message.type === 'JOB_COMPLETED') {
     hideActiveJob();
     if (message.results) {
-      showResults(message.results);
+      // Determine search type from job or message
+      const searchType = message.searchType || (message.results.length === 1 ? 'SINGLE' : 'BULK');
+      showResults(message.results, searchType);
     }
   } else if (message.type === 'JOB_FAILED') {
     hideActiveJob();
@@ -422,6 +535,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // ==================== Initialize ====================
 
-checkAuth();
-loadExtensionSettings();
+// Load cached results first, then check auth
+loadResultsFromStorage().then(() => {
+  checkAuth();
+  loadExtensionSettings();
+});
+
 console.log('[Leedz Extension] Side panel initialized - Command receiver mode');
