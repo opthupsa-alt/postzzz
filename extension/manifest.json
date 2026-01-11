@@ -1,19 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Leedz - Lead Generation",
-  "name_localized": {
-    "ar": "ليدز - توليد العملاء"
-  },
   "version": "1.0.0",
   "description": "Chrome extension for Leedz platform - Search and manage leads directly from your browser",
-  "description_localized": {
-    "ar": "إضافة كروم لمنصة ليدز - ابحث وأدر العملاء مباشرة من متصفحك"
-  },
   
   "externally_connectable": {
     "matches": [
       "http://localhost:*/*",
       "http://127.0.0.1:*/*",
+      "https://*.vercel.app/*",
+      "https://leedz.vercel.app/*",
       "https://*.leedz.app/*",
       "https://leedz.app/*"
     ]
@@ -43,13 +39,25 @@
   
   "options_page": "settings/settings.html",
   
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  
   "action": {
-    "default_title": "Leedz"
+    "default_title": "Leedz",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
   },
   
   "web_accessible_resources": [
     {
-      "resources": ["config.js"],
+      "resources": ["config.js", "config.production.js"],
       "matches": ["<all_urls>"]
     }
   ]

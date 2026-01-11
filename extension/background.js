@@ -31,38 +31,48 @@ let platformConfig = {
 
 // Load config from config.js file
 async function loadLocalConfig() {
-  try {
-    const configUrl = chrome.runtime.getURL('config.js');
-    const response = await fetch(configUrl);
-    const text = await response.text();
-    
-    // Parse LEEDZ_CONFIG from the file
-    const match = text.match(/const\s+LEEDZ_CONFIG\s*=\s*(\{[\s\S]*?\});/);
-    if (match) {
-      const configObj = eval('(' + match[1] + ')');
-      if (configObj.API_URL) {
-        platformConfig.apiUrl = configObj.API_URL;
-        DEFAULT_CONFIG.API_URL = configObj.API_URL;
+  // Try config.js first, then fallback to config.production.js
+  const configFiles = ['config.js', 'config.production.js'];
+  
+  for (const configFile of configFiles) {
+    try {
+      const configUrl = chrome.runtime.getURL(configFile);
+      const response = await fetch(configUrl);
+      if (!response.ok) continue;
+      
+      const text = await response.text();
+      
+      // Parse LEEDZ_CONFIG from the file
+      const match = text.match(/const\s+LEEDZ_CONFIG\s*=\s*(\{[\s\S]*?\});/);
+      if (match) {
+        const configObj = eval('(' + match[1] + ')');
+        if (configObj.API_URL) {
+          platformConfig.apiUrl = configObj.API_URL;
+          DEFAULT_CONFIG.API_URL = configObj.API_URL;
+        }
+        if (configObj.WEB_URL) {
+          platformConfig.platformUrl = configObj.WEB_URL;
+          DEFAULT_CONFIG.WEB_URL = configObj.WEB_URL;
+        }
+        if (configObj.DEBUG_MODE !== undefined) {
+          platformConfig.extensionDebugMode = configObj.DEBUG_MODE;
+          DEFAULT_CONFIG.DEBUG_MODE = configObj.DEBUG_MODE;
+        }
+        if (configObj.SHOW_SEARCH_WINDOW !== undefined) {
+          DEFAULT_CONFIG.SHOW_SEARCH_WINDOW = configObj.SHOW_SEARCH_WINDOW;
+        }
+        console.log(`[Leedz] Config loaded from ${configFile}:`, { 
+          apiUrl: platformConfig.apiUrl, 
+          platformUrl: platformConfig.platformUrl 
+        });
+        return; // Config loaded successfully
       }
-      if (configObj.WEB_URL) {
-        platformConfig.platformUrl = configObj.WEB_URL;
-        DEFAULT_CONFIG.WEB_URL = configObj.WEB_URL;
-      }
-      if (configObj.DEBUG_MODE !== undefined) {
-        platformConfig.extensionDebugMode = configObj.DEBUG_MODE;
-        DEFAULT_CONFIG.DEBUG_MODE = configObj.DEBUG_MODE;
-      }
-      if (configObj.SHOW_SEARCH_WINDOW !== undefined) {
-        DEFAULT_CONFIG.SHOW_SEARCH_WINDOW = configObj.SHOW_SEARCH_WINDOW;
-      }
-      console.log('[Leedz] Config loaded from config.js:', { 
-        apiUrl: platformConfig.apiUrl, 
-        platformUrl: platformConfig.platformUrl 
-      });
+    } catch (error) {
+      console.log(`[Leedz] Could not load ${configFile}:`, error.message);
     }
-  } catch (error) {
-    console.log('[Leedz] Using default config (config.js not found or error):', error.message);
   }
+  
+  console.log('[Leedz] Using default config (no config files found)');
 }
 
 // Initialize config on startup
