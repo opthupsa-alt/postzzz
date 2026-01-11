@@ -1,0 +1,163 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Send, Clock, CheckCircle, XCircle, RefreshCw, Eye } from 'lucide-react';
+import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
+
+interface PublishingJob {
+  id: string;
+  postTitle: string;
+  clientName: string;
+  platform: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  scheduledAt: string;
+  completedAt?: string;
+  error?: string;
+}
+
+const STATUS_CONFIG = {
+  PENDING: { label: 'في الانتظار', color: 'bg-yellow-50 text-yellow-600', icon: Clock },
+  RUNNING: { label: 'جاري النشر', color: 'bg-blue-50 text-blue-600', icon: RefreshCw },
+  COMPLETED: { label: 'تم النشر', color: 'bg-green-50 text-green-600', icon: CheckCircle },
+  FAILED: { label: 'فشل', color: 'bg-red-50 text-red-600', icon: XCircle },
+};
+
+const PublishingPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [jobs, setJobs] = useState<PublishingJob[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<string>('all');
+
+  useEffect(() => {
+    loadJobs();
+  }, []);
+
+  const loadJobs = async () => {
+    // TODO: Replace with actual API call
+    setJobs([]);
+    setLoading(false);
+  };
+
+  const filteredJobs = filter === 'all' 
+    ? jobs 
+    : jobs.filter(job => job.status === filter);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <PageHeader 
+        title="النشر"
+        subtitle="متابعة حالة نشر المحتوى"
+      />
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: 'في الانتظار', count: jobs.filter(j => j.status === 'PENDING').length, color: 'text-yellow-600 bg-yellow-50' },
+          { label: 'جاري النشر', count: jobs.filter(j => j.status === 'RUNNING').length, color: 'text-blue-600 bg-blue-50' },
+          { label: 'تم النشر', count: jobs.filter(j => j.status === 'COMPLETED').length, color: 'text-green-600 bg-green-50' },
+          { label: 'فشل', count: jobs.filter(j => j.status === 'FAILED').length, color: 'text-red-600 bg-red-50' },
+        ].map(stat => (
+          <div key={stat.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">{stat.label}</p>
+            <p className={`text-3xl font-black ${stat.color.split(' ')[0]}`}>{stat.count}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex gap-2 mb-6">
+        {[
+          { id: 'all', label: 'الكل' },
+          { id: 'PENDING', label: 'في الانتظار' },
+          { id: 'RUNNING', label: 'جاري النشر' },
+          { id: 'COMPLETED', label: 'تم النشر' },
+          { id: 'FAILED', label: 'فشل' },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setFilter(tab.id)}
+            className={`px-4 py-2 rounded-xl font-bold transition-colors ${
+              filter === tab.id
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-100'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Jobs List */}
+      {filteredJobs.length === 0 ? (
+        <EmptyState 
+          icon={Send}
+          title="لا توجد مهام نشر"
+          description="عند جدولة منشورات، ستظهر مهام النشر هنا"
+          action={
+            <button 
+              onClick={() => navigate('/app/posts/new')}
+              className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors"
+            >
+              إنشاء منشور
+            </button>
+          }
+        />
+      ) : (
+        <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
+          <div className="divide-y divide-gray-50">
+            {filteredJobs.map(job => {
+              const statusConfig = STATUS_CONFIG[job.status];
+              const StatusIcon = statusConfig.icon;
+              return (
+                <div key={job.id} className="p-6 hover:bg-gray-50/50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className={`p-3 rounded-xl ${statusConfig.color}`}>
+                        <StatusIcon size={20} className={job.status === 'RUNNING' ? 'animate-spin' : ''} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-900">{job.postTitle}</p>
+                        <p className="text-sm text-gray-500">{job.clientName} • {job.platform}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-left">
+                        <p className="text-sm text-gray-500">
+                          {new Date(job.scheduledAt).toLocaleDateString('ar-SA')}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {new Date(job.scheduledAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${statusConfig.color}`}>
+                        {statusConfig.label}
+                      </span>
+                      <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                        <Eye size={18} className="text-gray-400" />
+                      </button>
+                    </div>
+                  </div>
+                  {job.error && (
+                    <div className="mt-3 p-3 bg-red-50 rounded-xl text-sm text-red-600">
+                      {job.error}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default PublishingPage;

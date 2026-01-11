@@ -5,7 +5,8 @@ import {
   LayoutDashboard, Search, Users, ListTodo, MessageSquare, 
   Settings, LogOut, Bell, Zap, ShieldAlert, Menu, X, 
   Smartphone, ShieldCheck, Grid, Globe, Check, Trash2, Clock,
-  Command, Search as SearchIcon, Activity, Database, AlertCircle, Puzzle
+  Command, Search as SearchIcon, Activity, Database, AlertCircle, Puzzle,
+  Building2, Calendar, Send
 } from 'lucide-react';
 import JobProgressWidget from './JobProgressWidget';
 import NotificationToast from './NotificationToast';
@@ -128,10 +129,24 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           
           <nav className="flex-1 p-6 space-y-2 overflow-y-auto">
             <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/dashboard" icon={LayoutDashboard} label="لوحة التحكم" active={location.pathname === '/app/dashboard'} />
-            <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/prospecting" icon={Search} label="البحث عن عملاء" active={location.pathname === '/app/prospecting'} />
-            <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/leads" icon={Users} label="العملاء المحتملين" active={location.pathname === '/app/leads' || (location.pathname.startsWith('/app/leads/') && !location.pathname.includes('companies') && !['new', 'import'].includes(location.pathname.split('/').pop() || ''))} />
-            <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/lists" icon={ListTodo} label="القوائم الذكية" active={location.pathname === '/app/lists' || location.pathname.startsWith('/app/lists/')} />
-            <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/whatsapp" icon={MessageSquare} label="رسائل واتساب" active={location.pathname === '/app/whatsapp'} />
+            
+            {/* Social Ops Navigation */}
+            <div className="pt-4 mt-4 border-t border-gray-50">
+              <p className="px-4 mb-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">إدارة المحتوى</p>
+              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/clients" icon={Building2} label="العملاء" active={location.pathname === '/app/clients' || location.pathname.startsWith('/app/clients/')} />
+              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/posts" icon={Calendar} label="التقويم" active={location.pathname === '/app/posts' || location.pathname.startsWith('/app/posts/')} />
+              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/publishing" icon={Send} label="النشر" active={location.pathname === '/app/publishing'} />
+              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/devices" icon={Smartphone} label="الأجهزة" active={location.pathname === '/app/devices'} />
+            </div>
+            
+            {/* Legacy Navigation (hidden when searchDisabled) */}
+            <div className="pt-4 mt-4 border-t border-gray-50">
+              <p className="px-4 mb-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">أدوات البحث</p>
+              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/prospecting" icon={Search} label="البحث عن عملاء" active={location.pathname === '/app/prospecting'} />
+              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/leads" icon={Users} label="العملاء المحتملين" active={location.pathname === '/app/leads' || (location.pathname.startsWith('/app/leads/') && !location.pathname.includes('companies') && !['new', 'import'].includes(location.pathname.split('/').pop() || ''))} />
+              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/lists" icon={ListTodo} label="القوائم الذكية" active={location.pathname === '/app/lists' || location.pathname.startsWith('/app/lists/')} />
+              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/whatsapp" icon={MessageSquare} label="رسائل واتساب" active={location.pathname === '/app/whatsapp'} />
+            </div>
             
             <div className="pt-4 mt-4 border-t border-gray-50">
               <p className="px-4 mb-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">إدارة الفريق</p>

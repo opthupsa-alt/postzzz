@@ -35,6 +35,13 @@ import AISettingsPage from './pages/admin/AISettingsPage';
 import ExtensionSettingsPage from './pages/ExtensionSettingsPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import AcceptInvitePage from './pages/AcceptInvitePage';
+import ClientsPage from './pages/ClientsPage';
+import ClientDetailPage from './pages/ClientDetailPage';
+import ClientFormPage from './pages/ClientFormPage';
+import CalendarPage from './pages/CalendarPage';
+import PostEditorPage from './pages/PostEditorPage';
+import PublishingPage from './pages/PublishingPage';
+import DevicesPage from './pages/DevicesPage';
 
 const App = () => {
   return (
@@ -86,6 +93,17 @@ const App = () => {
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="extension-settings" element={<ExtensionSettingsPage />} />
                 <Route path="audit-logs" element={<AuditLogsPage />} />
+                {/* Social Ops Routes */}
+                <Route path="clients" element={<ClientsPage />} />
+                <Route path="clients/new" element={<ClientFormPage />} />
+                <Route path="clients/:clientId" element={<ClientDetailPage />} />
+                <Route path="clients/:clientId/edit" element={<ClientFormPage />} />
+                <Route path="posts" element={<CalendarPage />} />
+                <Route path="posts/new" element={<PostEditorPage />} />
+                <Route path="posts/:postId" element={<PostEditorPage />} />
+                <Route path="posts/:postId/edit" element={<PostEditorPage />} />
+                <Route path="publishing" element={<PublishingPage />} />
+                <Route path="devices" element={<DevicesPage />} />
               </Routes>
             </AppShell>
           </UserRoute>
