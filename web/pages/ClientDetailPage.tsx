@@ -1,50 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowRight, Edit, Trash2, Globe, Calendar, Send, 
+  ArrowRight, Edit, Trash2, Globe, Calendar, 
   Instagram, Facebook, Twitter, Linkedin, Plus, MoreHorizontal,
-  Building2, Mail, Phone, Link, CheckCircle, XCircle
+  Building2, Mail, Link, AlertCircle, Youtube, AtSign, Music2, Ghost
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
-
-interface ClientPlatform {
-  id: string;
-  platform: string;
-  accountName: string;
-  accountUrl?: string;
-  isConnected: boolean;
-}
-
-interface Client {
-  id: string;
-  name: string;
-  industry?: string;
-  logoUrl?: string;
-  contactName?: string;
-  contactEmail?: string;
-  contactPhone?: string;
-  website?: string;
-  notes?: string;
-  isActive: boolean;
-  platforms: ClientPlatform[];
-  createdAt: string;
-}
+import { 
+  getClient, deleteClient, createPlatform, deletePlatform,
+  Client, ClientPlatform, SocialPlatform, PLATFORM_CONFIG, ALL_PLATFORMS, CreatePlatformDto
+} from '../lib/clients-api';
 
 const PLATFORM_ICONS: Record<string, React.ElementType> = {
+  X: Twitter,
   INSTAGRAM: Instagram,
   FACEBOOK: Facebook,
-  TWITTER: Twitter,
   LINKEDIN: Linkedin,
-};
-
-const PLATFORM_NAMES: Record<string, string> = {
-  INSTAGRAM: 'انستقرام',
-  FACEBOOK: 'فيسبوك',
-  TWITTER: 'تويتر/إكس',
-  LINKEDIN: 'لينكدإن',
-  TIKTOK: 'تيك توك',
-  SNAPCHAT: 'سناب شات',
+  YOUTUBE: Youtube,
+  THREADS: AtSign,
+  TIKTOK: Music2,
+  SNAPCHAT: Ghost,
 };
 
 const ClientDetailPage: React.FC = () => {
@@ -52,17 +28,68 @@ const ClientDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'platforms' | 'posts' | 'team'>('platforms');
+  const [showAddPlatform, setShowAddPlatform] = useState(false);
+  const [addingPlatform, setAddingPlatform] = useState(false);
 
   useEffect(() => {
-    loadClient();
+    if (clientId) {
+      loadClient();
+    }
   }, [clientId]);
 
   const loadClient = async () => {
-    // TODO: Replace with actual API call
-    // const data = await getClient(clientId);
-    setClient(null);
-    setLoading(false);
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getClient(clientId!);
+      setClient(data);
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء تحميل بيانات العميل');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteClient = async () => {
+    if (!confirm('هل أنت متأكد من حذف هذا العميل؟')) return;
+    try {
+      await deleteClient(clientId!);
+      navigate('/app/clients');
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء حذف العميل');
+    }
+  };
+
+  const handleAddPlatform = async (platform: SocialPlatform) => {
+    try {
+      setAddingPlatform(true);
+      const dto: CreatePlatformDto = { platform };
+      await createPlatform(clientId!, dto);
+      await loadClient();
+      setShowAddPlatform(false);
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء إضافة المنصة');
+    } finally {
+      setAddingPlatform(false);
+    }
+  };
+
+  const handleDeletePlatform = async (platformId: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذه المنصة؟')) return;
+    try {
+      await deletePlatform(platformId);
+      await loadClient();
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء حذف المنصة');
+    }
+  };
+
+  const getAvailablePlatforms = (): SocialPlatform[] => {
+    if (!client?.platforms) return ALL_PLATFORMS;
+    const usedPlatforms = client.platforms.map(p => p.platform);
+    return ALL_PLATFORMS.filter(p => !usedPlatforms.includes(p));
   };
 
   if (loading) {
@@ -148,7 +175,10 @@ const ClientDetailPage: React.FC = () => {
               <Edit size={18} />
               تعديل
             </button>
-            <button className="bg-red-50 text-red-600 px-4 py-2 rounded-xl font-bold hover:bg-red-100 transition-colors flex items-center gap-2">
+            <button 
+              onClick={handleDeleteClient}
+              className="bg-red-50 text-red-600 px-4 py-2 rounded-xl font-bold hover:bg-red-100 transition-colors flex items-center gap-2"
+            >
               <Trash2 size={18} />
               حذف
             </button>
@@ -178,24 +208,65 @@ const ClientDetailPage: React.FC = () => {
         ))}
       </div>
 
+      {/* Error Display */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600">
+          <AlertCircle size={20} />
+          <span className="font-bold">{error}</span>
+        </div>
+      )}
+
       {/* Tab Content */}
       {activeTab === 'platforms' && (
         <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-black text-gray-900">المنصات المرتبطة</h2>
-            <button className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center gap-2">
+            <button 
+              onClick={() => setShowAddPlatform(!showAddPlatform)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center gap-2"
+            >
               <Plus size={18} />
               إضافة منصة
             </button>
           </div>
 
-          {client.platforms.length === 0 ? (
+          {/* Add Platform Dropdown */}
+          {showAddPlatform && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-2xl">
+              <p className="text-sm font-bold text-gray-700 mb-3">اختر منصة:</p>
+              <div className="flex flex-wrap gap-2">
+                {getAvailablePlatforms().map(platform => {
+                  const config = PLATFORM_CONFIG[platform];
+                  const Icon = PLATFORM_ICONS[platform] || Globe;
+                  return (
+                    <button
+                      key={platform}
+                      onClick={() => handleAddPlatform(platform)}
+                      disabled={addingPlatform}
+                      className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                    >
+                      <Icon size={18} />
+                      <span className="font-bold text-sm">{config.name}</span>
+                    </button>
+                  );
+                })}
+                {getAvailablePlatforms().length === 0 && (
+                  <p className="text-gray-500 text-sm">تم إضافة جميع المنصات المتاحة</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(!client.platforms || client.platforms.length === 0) ? (
             <EmptyState 
               icon={Globe}
               title="لا توجد منصات"
               description="أضف منصات التواصل الاجتماعي لهذا العميل"
               action={
-                <button className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center gap-2">
+                <button 
+                  onClick={() => setShowAddPlatform(true)}
+                  className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
                   <Plus size={20} />
                   إضافة منصة
                 </button>
@@ -205,40 +276,36 @@ const ClientDetailPage: React.FC = () => {
             <div className="grid gap-4">
               {client.platforms.map(platform => {
                 const Icon = PLATFORM_ICONS[platform.platform] || Globe;
+                const config = PLATFORM_CONFIG[platform.platform];
                 return (
                   <div 
                     key={platform.id}
                     className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-colors"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-sm">
-                        <Icon size={24} className="text-gray-600" />
+                      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${config?.color || 'from-gray-500 to-gray-600'} flex items-center justify-center shadow-sm`}>
+                        <Icon size={24} className="text-white" />
                       </div>
                       <div>
                         <p className="font-bold text-gray-900">
-                          {PLATFORM_NAMES[platform.platform] || platform.platform}
+                          {config?.name || platform.platform}
                         </p>
-                        <p className="text-sm text-gray-500">@{platform.accountName}</p>
+                        {platform.handle && (
+                          <p className="text-sm text-gray-500">@{platform.handle}</p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
-                      <span className={`flex items-center gap-1 text-sm font-bold ${
-                        platform.isConnected ? 'text-green-600' : 'text-red-500'
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                        platform.isEnabled ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'
                       }`}>
-                        {platform.isConnected ? (
-                          <>
-                            <CheckCircle size={16} />
-                            متصل
-                          </>
-                        ) : (
-                          <>
-                            <XCircle size={16} />
-                            غير متصل
-                          </>
-                        )}
+                        {platform.isEnabled ? 'مفعّل' : 'معطّل'}
                       </span>
-                      <button className="p-2 hover:bg-white rounded-lg transition-colors">
-                        <MoreHorizontal size={18} className="text-gray-400" />
+                      <button 
+                        onClick={() => handleDeletePlatform(platform.id)}
+                        className="p-2 hover:bg-red-50 rounded-lg transition-colors text-gray-400 hover:text-red-500"
+                      >
+                        <Trash2 size={18} />
                       </button>
                     </div>
                   </div>

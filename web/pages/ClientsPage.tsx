@@ -1,27 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Building2, Search, MoreHorizontal, Globe } from 'lucide-react';
+import { Plus, Building2, Search, MoreHorizontal, Globe, AlertCircle } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import DataTable from '../components/DataTable';
 import EmptyState from '../components/EmptyState';
-
-interface Client {
-  id: string;
-  name: string;
-  industry?: string;
-  logoUrl?: string;
-  contactName?: string;
-  contactEmail?: string;
-  isActive: boolean;
-  platformsCount: number;
-  postsCount: number;
-  createdAt: string;
-}
+import { getClients, Client } from '../lib/clients-api';
 
 const ClientsPage: React.FC = () => {
   const navigate = useNavigate();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
@@ -29,10 +18,16 @@ const ClientsPage: React.FC = () => {
   }, []);
 
   const loadClients = async () => {
-    // TODO: Replace with actual API call
-    // const data = await getClients();
-    setClients([]);
-    setLoading(false);
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getClients();
+      setClients(data);
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء تحميل العملاء');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filteredClients = clients.filter(client =>
@@ -43,6 +38,21 @@ const ClientsPage: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-center">
+        <AlertCircle size={48} className="text-red-400 mb-4" />
+        <p className="text-red-600 font-bold mb-4">{error}</p>
+        <button 
+          onClick={loadClients}
+          className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-blue-700"
+        >
+          إعادة المحاولة
+        </button>
       </div>
     );
   }
@@ -125,20 +135,14 @@ const ClientsPage: React.FC = () => {
               ),
             },
             {
-              header: 'المنشورات',
-              accessor: (client) => (
-                <span className="font-bold text-gray-700">{client.postsCount}</span>
-              ),
-            },
-            {
               header: 'الحالة',
               accessor: (client) => (
                 <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  client.isActive 
+                  client.status === 'ACTIVE' 
                     ? 'bg-green-50 text-green-600' 
                     : 'bg-gray-100 text-gray-500'
                 }`}>
-                  {client.isActive ? 'نشط' : 'غير نشط'}
+                  {client.status === 'ACTIVE' ? 'نشط' : 'مؤرشف'}
                 </span>
               ),
             },

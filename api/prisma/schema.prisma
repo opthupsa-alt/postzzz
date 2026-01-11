@@ -36,6 +36,8 @@ model Tenant {
   searchHistory SearchHistory[]
   whatsappTemplates WhatsAppTemplate[]
   whatsappLogs  WhatsAppLog[]
+  clients       Client[]
+  clientPlatforms ClientPlatform[]
 
   @@map("tenants")
 }
@@ -64,6 +66,7 @@ model User {
   searchHistory   SearchHistory[]
   passwordResets  PasswordReset[]
   whatsappLogs    WhatsAppLog[]
+  clientsCreated  Client[]       @relation("ClientCreatedBy")
 
   @@map("users")
 }
@@ -671,5 +674,71 @@ model WhatsAppLog {
   @@index([tenantId, status])
   @@index([phone])
   @@map("whatsapp_logs")
+}
+
+// ==================== Social Ops: Clients ====================
+
+enum ClientStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model Client {
+  id          String       @id @default(uuid())
+  tenantId    String
+  name        String
+  category    String?
+  industry    String?
+  description String?
+  logoUrl     String?
+  contactName String?
+  contactEmail String?
+  contactPhone String?
+  website     String?
+  notes       String?      @db.Text
+  status      ClientStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  createdById String?
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User?        @relation("ClientCreatedBy", fields: [createdById], references: [id])
+  platforms   ClientPlatform[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, name])
+  @@map("clients")
+}
+
+enum SocialPlatform {
+  X
+  INSTAGRAM
+  TIKTOK
+  SNAPCHAT
+  LINKEDIN
+  THREADS
+  YOUTUBE
+  FACEBOOK
+}
+
+model ClientPlatform {
+  id          String         @id @default(uuid())
+  tenantId    String
+  clientId    String
+  platform    SocialPlatform
+  handle      String?
+  profileUrl  String?
+  notes       String?
+  isEnabled   Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client      Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, clientId, platform])
+  @@index([tenantId])
+  @@index([clientId])
+  @@map("client_platforms")
 }
 

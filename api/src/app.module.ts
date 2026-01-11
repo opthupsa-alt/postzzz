@@ -22,6 +22,7 @@ import { AIProviderModule } from './ai-provider/ai-provider.module';
 import { SurveyModule } from './survey/survey.module';
 import { SearchHistoryModule } from './search-history/search-history.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
+import { ClientsModule } from './clients/clients.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
     SurveyModule,
     SearchHistoryModule,
     WhatsAppModule,
+    ClientsModule,
   ],
 })
 export class AppModule {}

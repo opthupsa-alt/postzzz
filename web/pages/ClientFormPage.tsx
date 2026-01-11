@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowRight, Save, Building2 } from 'lucide-react';
+import { ArrowRight, Save, AlertCircle } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
+import { getClient, createClient, updateClient, CreateClientDto } from '../lib/clients-api';
 
 interface ClientFormData {
   name: string;
   industry: string;
+  category: string;
+  description: string;
   logoUrl: string;
   contactName: string;
   contactEmail: string;
@@ -21,9 +24,12 @@ const ClientFormPage: React.FC = () => {
   
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<ClientFormData>({
     name: '',
     industry: '',
+    category: '',
+    description: '',
     logoUrl: '',
     contactName: '',
     contactEmail: '',
@@ -33,31 +39,61 @@ const ClientFormPage: React.FC = () => {
   });
 
   useEffect(() => {
-    if (isEdit) {
+    if (isEdit && clientId) {
       loadClient();
     }
   }, [clientId]);
 
   const loadClient = async () => {
-    // TODO: Replace with actual API call
-    // const data = await getClient(clientId);
-    setLoading(false);
+    try {
+      setLoading(true);
+      const data = await getClient(clientId!);
+      setFormData({
+        name: data.name || '',
+        industry: data.industry || '',
+        category: data.category || '',
+        description: data.description || '',
+        logoUrl: data.logoUrl || '',
+        contactName: data.contactName || '',
+        contactEmail: data.contactEmail || '',
+        contactPhone: data.contactPhone || '',
+        website: data.website || '',
+        notes: data.notes || '',
+      });
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء تحميل بيانات العميل');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError(null);
     
     try {
-      // TODO: Replace with actual API call
-      // if (isEdit) {
-      //   await updateClient(clientId, formData);
-      // } else {
-      //   await createClient(formData);
-      // }
+      const dto: CreateClientDto = {
+        name: formData.name,
+        industry: formData.industry || undefined,
+        category: formData.category || undefined,
+        description: formData.description || undefined,
+        logoUrl: formData.logoUrl || undefined,
+        contactName: formData.contactName || undefined,
+        contactEmail: formData.contactEmail || undefined,
+        contactPhone: formData.contactPhone || undefined,
+        website: formData.website || undefined,
+        notes: formData.notes || undefined,
+      };
+
+      if (isEdit && clientId) {
+        await updateClient(clientId, dto);
+      } else {
+        await createClient(dto);
+      }
       navigate('/app/clients');
-    } catch (error) {
-      console.error('Failed to save client:', error);
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء حفظ العميل');
     } finally {
       setSaving(false);
     }
@@ -89,6 +125,13 @@ const ClientFormPage: React.FC = () => {
         title={isEdit ? 'تعديل العميل' : 'إضافة عميل جديد'}
         subtitle={isEdit ? 'تحديث بيانات العميل' : 'أدخل بيانات العميل الجديد'}
       />
+
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600">
+          <AlertCircle size={20} />
+          <span className="font-bold">{error}</span>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8">
         <div className="grid md:grid-cols-2 gap-6">
