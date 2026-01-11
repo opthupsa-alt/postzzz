@@ -104,7 +104,7 @@ let executionWindowId = null;
 let executionTabId = null;
 
 // Search state for visibility control
-let showSearchWindow = true; // Set to true temporarily for debugging - change back to false for production
+let showSearchWindow = false; // Default to background mode - will be loaded from settings
 
 // Search abort control - للتحكم في إيقاف البحث
 let currentSearchAborted = false;
@@ -1123,26 +1123,38 @@ async function ensureExecutionWindow() {
   }
   
   // Create new window - visibility controlled by showSearchWindow flag
-  const windowConfig = showSearchWindow 
-    ? {
-        type: 'normal',
-        focused: true,
-        width: 1200,
-        height: 800,
-        state: 'normal',
-      }
-    : {
-        type: 'normal',
-        focused: false,
-        width: 1200,
-        height: 800,
-        left: -2000,
-        top: -2000,
-        state: 'minimized',
-      };
+  console.log('[Leedz] Creating window, showSearchWindow:', showSearchWindow);
   
-  console.log('[Leedz] Creating window with config:', windowConfig);
-  const window = await chrome.windows.create(windowConfig);
+  let window;
+  
+  if (showSearchWindow) {
+    // Visible window for debugging/foreground mode
+    window = await chrome.windows.create({
+      type: 'normal',
+      focused: true,
+      width: 1200,
+      height: 800,
+      state: 'normal',
+    });
+  } else {
+    // Background mode - create minimized window
+    // First create a normal window, then minimize it (more reliable)
+    window = await chrome.windows.create({
+      type: 'normal',
+      focused: false,
+      width: 1200,
+      height: 800,
+    });
+    
+    // Then minimize it
+    try {
+      await chrome.windows.update(window.id, { state: 'minimized' });
+    } catch (e) {
+      console.log('[Leedz] Could not minimize window:', e.message);
+    }
+  }
+  
+  console.log('[Leedz] Window created:', window.id);
   
   executionWindowId = window.id;
   
@@ -4990,9 +5002,9 @@ async function executeGoogleMapsSearch(jobPlan) {
     currentJobId = null;
     currentSearchAborted = false;
     
-    // Close execution window after job completes (optional - can be controlled)
-    // Uncomment the next line to auto-close the window after search
-    // await closeExecutionWindow();
+    // Close execution window after job completes
+    console.log('[Leedz] Closing execution window after job completion');
+    await closeExecutionWindow();
   }
 }
 
@@ -5019,6 +5031,18 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   
   // 1. Load local config (don't fetch from API on startup to avoid errors)
   await loadLocalConfig();
+  
+  // 1.5. Load extension settings including showSearchWindow
+  try {
+    const settingsData = await getStorageData(['leedz_extension_settings']);
+    const settings = settingsData.leedz_extension_settings || {};
+    if (settings.showSearchWindow !== undefined) {
+      showSearchWindow = settings.showSearchWindow;
+      console.log('[Leedz] Loaded showSearchWindow setting:', showSearchWindow);
+    }
+  } catch (e) {
+    console.log('[Leedz] Could not load settings:', e.message);
+  }
   
   // 2. Try to load platform config from storage (don't fetch from API)
   try {
