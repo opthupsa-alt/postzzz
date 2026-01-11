@@ -1,65 +1,231 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
-  ArrowRight, Save, Send, Calendar, Image, Video, 
-  Instagram, Facebook, Twitter, Linkedin, Plus, X, Clock
+  ArrowRight, Save, Send, Image, Video, 
+  Instagram, Facebook, Twitter, Linkedin, Clock, AlertCircle,
+  Youtube, AtSign, Music2, Ghost, CheckCircle
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
+import { getClients, Client, SocialPlatform, PLATFORM_CONFIG, ALL_PLATFORMS } from '../lib/clients-api';
+import { 
+  getPost, createPost, updatePost, upsertVariants, 
+  submitForApproval, approvePost, schedulePost,
+  Post, CreateVariantDto, POST_STATUS_CONFIG
+} from '../lib/posts-api';
 
-const PLATFORMS = [
-  { id: 'INSTAGRAM', name: 'انستقرام', icon: Instagram, color: 'from-pink-500 to-purple-500' },
-  { id: 'FACEBOOK', name: 'فيسبوك', icon: Facebook, color: 'from-blue-600 to-blue-700' },
-  { id: 'TWITTER', name: 'تويتر/إكس', icon: Twitter, color: 'from-gray-800 to-black' },
-  { id: 'LINKEDIN', name: 'لينكدإن', icon: Linkedin, color: 'from-blue-700 to-blue-800' },
-];
+const PLATFORM_ICONS: Record<string, React.ElementType> = {
+  X: Twitter,
+  INSTAGRAM: Instagram,
+  FACEBOOK: Facebook,
+  LINKEDIN: Linkedin,
+  YOUTUBE: Youtube,
+  THREADS: AtSign,
+  TIKTOK: Music2,
+  SNAPCHAT: Ghost,
+};
 
 const PostEditorPage: React.FC = () => {
   const { postId } = useParams<{ postId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const isEdit = Boolean(postId);
 
-  const [loading, setLoading] = useState(isEdit);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [post, setPost] = useState<Post | null>(null);
   const [selectedClient, setSelectedClient] = useState('');
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
-  const [content, setContent] = useState('');
+  const [title, setTitle] = useState('');
+  const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>([]);
+  const [variantContents, setVariantContents] = useState<Record<SocialPlatform, { caption: string; hashtags: string }>>({} as any);
   const [scheduledAt, setScheduledAt] = useState('');
-  const [clients, setClients] = useState<any[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [activeVariantTab, setActiveVariantTab] = useState<SocialPlatform | null>(null);
 
   useEffect(() => {
     loadData();
   }, [postId]);
 
   const loadData = async () => {
-    // TODO: Load clients and post data if editing
-    setClients([]);
-    setLoading(false);
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Load clients
+      const clientsData = await getClients();
+      setClients(clientsData);
+
+      // Load post if editing
+      if (isEdit && postId) {
+        const postData = await getPost(postId);
+        setPost(postData);
+        setSelectedClient(postData.client.id);
+        setTitle(postData.title || '');
+        setScheduledAt(postData.scheduledAt ? postData.scheduledAt.slice(0, 16) : '');
+        
+        // Load variants
+        const platforms = postData.variants?.map(v => v.platform) || [];
+        setSelectedPlatforms(platforms);
+        
+        const contents: Record<SocialPlatform, { caption: string; hashtags: string }> = {} as any;
+        postData.variants?.forEach(v => {
+          contents[v.platform] = {
+            caption: v.caption || '',
+            hashtags: v.hashtags || '',
+          };
+        });
+        setVariantContents(contents);
+        if (platforms.length > 0) {
+          setActiveVariantTab(platforms[0]);
+        }
+      } else {
+        // Check for date from URL params
+        const dateParam = searchParams.get('date');
+        if (dateParam) {
+          setScheduledAt(`${dateParam}T10:00`);
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء تحميل البيانات');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const togglePlatform = (platformId: string) => {
-    setSelectedPlatforms(prev => 
-      prev.includes(platformId) 
-        ? prev.filter(p => p !== platformId)
-        : [...prev, platformId]
-    );
+  const togglePlatform = (platformId: SocialPlatform) => {
+    setSelectedPlatforms(prev => {
+      if (prev.includes(platformId)) {
+        const newPlatforms = prev.filter(p => p !== platformId);
+        if (activeVariantTab === platformId) {
+          setActiveVariantTab(newPlatforms[0] || null);
+        }
+        return newPlatforms;
+      } else {
+        if (!activeVariantTab) {
+          setActiveVariantTab(platformId);
+        }
+        // Initialize content for new platform
+        if (!variantContents[platformId]) {
+          setVariantContents(prev => ({
+            ...prev,
+            [platformId]: { caption: '', hashtags: '' },
+          }));
+        }
+        return [...prev, platformId];
+      }
+    });
+  };
+
+  const updateVariantContent = (platform: SocialPlatform, field: 'caption' | 'hashtags', value: string) => {
+    setVariantContents(prev => ({
+      ...prev,
+      [platform]: {
+        ...prev[platform],
+        [field]: value,
+      },
+    }));
   };
 
   const handleSaveDraft = async () => {
+    if (!selectedClient) {
+      setError('يرجى اختيار العميل');
+      return;
+    }
+
     setSaving(true);
-    // TODO: Save as draft
-    setTimeout(() => {
-      setSaving(false);
+    setError(null);
+
+    try {
+      let savedPost: Post;
+
+      if (isEdit && postId) {
+        savedPost = await updatePost(postId, {
+          title: title || undefined,
+          scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+        });
+      } else {
+        const variants: CreateVariantDto[] = selectedPlatforms.map(platform => ({
+          platform,
+          caption: variantContents[platform]?.caption || '',
+          hashtags: variantContents[platform]?.hashtags || '',
+        }));
+
+        savedPost = await createPost({
+          clientId: selectedClient,
+          title: title || undefined,
+          scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+          variants,
+        });
+      }
+
+      // Update variants if editing
+      if (isEdit && postId) {
+        const variants: CreateVariantDto[] = selectedPlatforms.map(platform => ({
+          platform,
+          caption: variantContents[platform]?.caption || '',
+          hashtags: variantContents[platform]?.hashtags || '',
+        }));
+        await upsertVariants(postId, variants);
+      }
+
       navigate('/app/posts');
-    }, 500);
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء حفظ المنشور');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSubmitApproval = async () => {
+    if (!postId) return;
+    setSaving(true);
+    try {
+      await submitForApproval(postId);
+      navigate('/app/posts');
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!postId) return;
+    setSaving(true);
+    try {
+      await approvePost(postId);
+      navigate('/app/posts');
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSchedule = async () => {
+    if (!selectedClient || selectedPlatforms.length === 0) {
+      setError('يرجى اختيار العميل والمنصات');
+      return;
+    }
+
     setSaving(true);
-    // TODO: Schedule post
-    setTimeout(() => {
-      setSaving(false);
+    setError(null);
+
+    try {
+      // Save first if new
+      if (!isEdit) {
+        await handleSaveDraft();
+        return;
+      }
+
+      // Schedule existing post
+      await schedulePost(postId!, scheduledAt ? new Date(scheduledAt).toISOString() : undefined);
       navigate('/app/posts');
-    }, 500);
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء جدولة المنشور');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) {
@@ -119,24 +285,25 @@ const PostEditorPage: React.FC = () => {
           <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-6">
             <h3 className="text-lg font-black text-gray-900 mb-4">المنصات</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {PLATFORMS.map(platform => {
-                const Icon = platform.icon;
-                const isSelected = selectedPlatforms.includes(platform.id);
+              {ALL_PLATFORMS.map(platformId => {
+                const config = PLATFORM_CONFIG[platformId];
+                const Icon = PLATFORM_ICONS[platformId] || Twitter;
+                const isSelected = selectedPlatforms.includes(platformId);
                 return (
                   <button
-                    key={platform.id}
-                    onClick={() => togglePlatform(platform.id)}
+                    key={platformId}
+                    onClick={() => togglePlatform(platformId)}
                     className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${
                       isSelected 
                         ? 'border-blue-500 bg-blue-50' 
                         : 'border-gray-100 hover:border-gray-200'
                     }`}
                   >
-                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${platform.color} flex items-center justify-center`}>
+                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${config.color} flex items-center justify-center`}>
                       <Icon size={24} className="text-white" />
                     </div>
                     <span className={`text-sm font-bold ${isSelected ? 'text-blue-600' : 'text-gray-600'}`}>
-                      {platform.name}
+                      {config.name}
                     </span>
                   </button>
                 );
@@ -144,30 +311,80 @@ const PostEditorPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Content Editor */}
-          <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-6">
-            <h3 className="text-lg font-black text-gray-900 mb-4">المحتوى</h3>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="اكتب محتوى المنشور هنا..."
-              rows={6}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none resize-none"
-            />
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-              <div className="flex items-center gap-2">
-                <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                  <Image size={20} className="text-gray-400" />
-                </button>
-                <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                  <Video size={20} className="text-gray-400" />
-                </button>
+          {/* Variant Editor - Tabs per platform */}
+          {selectedPlatforms.length > 0 && (
+            <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-6">
+              <h3 className="text-lg font-black text-gray-900 mb-4">محتوى المنصات</h3>
+              
+              {/* Platform Tabs */}
+              <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+                {selectedPlatforms.map(platform => {
+                  const config = PLATFORM_CONFIG[platform];
+                  const Icon = PLATFORM_ICONS[platform] || Twitter;
+                  return (
+                    <button
+                      key={platform}
+                      onClick={() => setActiveVariantTab(platform)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-colors ${
+                        activeVariantTab === platform
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      <Icon size={16} />
+                      {config.name}
+                    </button>
+                  );
+                })}
               </div>
-              <span className="text-sm text-gray-400">
-                {content.length} حرف
-              </span>
+
+              {/* Active Variant Content */}
+              {activeVariantTab && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                      المحتوى
+                    </label>
+                    <textarea
+                      value={variantContents[activeVariantTab]?.caption || ''}
+                      onChange={(e) => updateVariantContent(activeVariantTab, 'caption', e.target.value)}
+                      placeholder={`اكتب محتوى ${PLATFORM_CONFIG[activeVariantTab].name}...`}
+                      rows={5}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none resize-none"
+                    />
+                    <div className="flex justify-end mt-2">
+                      <span className="text-sm text-gray-400">
+                        {(variantContents[activeVariantTab]?.caption || '').length} حرف
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                      الهاشتاقات
+                    </label>
+                    <input
+                      type="text"
+                      value={variantContents[activeVariantTab]?.hashtags || ''}
+                      onChange={(e) => updateVariantContent(activeVariantTab, 'hashtags', e.target.value)}
+                      placeholder="#هاشتاق1 #هاشتاق2"
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                      <Image size={20} className="text-gray-400" />
+                    </button>
+                    <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                      <Video size={20} className="text-gray-400" />
+                    </button>
+                    <span className="text-xs text-gray-400 mr-auto">إضافة وسائط (قريباً)</span>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
 
         {/* Sidebar */}
@@ -191,37 +408,86 @@ const PostEditorPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Error Display */}
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600">
+              <AlertCircle size={20} />
+              <span className="font-bold text-sm">{error}</span>
+            </div>
+          )}
+
+          {/* Post Status (if editing) */}
+          {isEdit && post && (
+            <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-6">
+              <h3 className="text-lg font-black text-gray-900 mb-4">الحالة</h3>
+              <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold ${POST_STATUS_CONFIG[post.status].color}`}>
+                {post.status === 'APPROVED' && <CheckCircle size={18} />}
+                {POST_STATUS_CONFIG[post.status].label}
+              </div>
+            </div>
+          )}
+
           {/* Actions */}
           <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-6 space-y-3">
             <button
-              onClick={handleSchedule}
-              disabled={saving || !content || selectedPlatforms.length === 0}
+              onClick={handleSaveDraft}
+              disabled={saving || !selectedClient}
               className="w-full bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Send size={20} />
-              {scheduledAt ? 'جدولة المنشور' : 'نشر الآن'}
-            </button>
-            <button
-              onClick={handleSaveDraft}
-              disabled={saving}
-              className="w-full bg-gray-100 text-gray-700 px-6 py-3 rounded-xl font-bold hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
-            >
               <Save size={20} />
-              حفظ كمسودة
+              {saving ? 'جاري الحفظ...' : 'حفظ المنشور'}
             </button>
+
+            {isEdit && post?.status === 'DRAFT' && (
+              <button
+                onClick={handleSubmitApproval}
+                disabled={saving}
+                className="w-full bg-yellow-500 text-white px-6 py-3 rounded-xl font-bold hover:bg-yellow-600 transition-colors flex items-center justify-center gap-2"
+              >
+                <Send size={20} />
+                إرسال للموافقة
+              </button>
+            )}
+
+            {isEdit && (post?.status === 'DRAFT' || post?.status === 'PENDING_APPROVAL') && (
+              <button
+                onClick={handleApprove}
+                disabled={saving}
+                className="w-full bg-green-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <CheckCircle size={20} />
+                الموافقة
+              </button>
+            )}
+
+            {isEdit && post?.status === 'APPROVED' && (
+              <button
+                onClick={handleSchedule}
+                disabled={saving || !scheduledAt}
+                className="w-full bg-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <Clock size={20} />
+                جدولة المنشور
+              </button>
+            )}
           </div>
 
           {/* Preview */}
-          <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-6">
-            <h3 className="text-lg font-black text-gray-900 mb-4">معاينة</h3>
-            <div className="bg-gray-50 rounded-2xl p-4 min-h-[200px]">
-              {content ? (
-                <p className="text-gray-700 whitespace-pre-wrap">{content}</p>
-              ) : (
-                <p className="text-gray-400 text-center">اكتب محتوى لمعاينته</p>
-              )}
+          {activeVariantTab && variantContents[activeVariantTab]?.caption && (
+            <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-6">
+              <h3 className="text-lg font-black text-gray-900 mb-4">معاينة</h3>
+              <div className="bg-gray-50 rounded-2xl p-4 min-h-[100px]">
+                <p className="text-gray-700 whitespace-pre-wrap text-sm">
+                  {variantContents[activeVariantTab].caption}
+                </p>
+                {variantContents[activeVariantTab].hashtags && (
+                  <p className="text-blue-600 text-sm mt-2">
+                    {variantContents[activeVariantTab].hashtags}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,23 +1,69 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Calendar, ChevronRight, ChevronLeft, Filter } from 'lucide-react';
+import { Plus, Calendar, ChevronRight, ChevronLeft, Filter, AlertCircle } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
+import { getPosts, Post, POST_STATUS_CONFIG } from '../lib/posts-api';
+import { getClients, Client } from '../lib/clients-api';
 
 const CalendarPage: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
+
+  useEffect(() => {
+    loadClients();
+  }, []);
 
   useEffect(() => {
     loadPosts();
-  }, [currentDate]);
+  }, [currentDate, selectedClientId]);
+
+  const loadClients = async () => {
+    try {
+      const data = await getClients();
+      setClients(data);
+    } catch (err: any) {
+      console.error('Failed to load clients:', err);
+    }
+  };
 
   const loadPosts = async () => {
-    // TODO: Replace with actual API call
-    setPosts([]);
-    setLoading(false);
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Calculate month range
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      const from = new Date(year, month, 1).toISOString();
+      const to = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+      
+      const data = await getPosts({
+        from,
+        to,
+        clientId: selectedClientId || undefined,
+      });
+      setPosts(data);
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء تحميل المنشورات');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getPostsForDay = (day: number): Post[] => {
+    return posts.filter(post => {
+      if (!post.scheduledAt) return false;
+      const postDate = new Date(post.scheduledAt);
+      return postDate.getDate() === day &&
+             postDate.getMonth() === currentDate.getMonth() &&
+             postDate.getFullYear() === currentDate.getFullYear();
+    });
   };
 
   const monthNames = [
@@ -76,10 +122,16 @@ const CalendarPage: React.FC = () => {
         subtitle="جدولة ومتابعة المنشورات"
         actions={
           <div className="flex items-center gap-3">
-            <button className="bg-gray-100 text-gray-700 px-4 py-3 rounded-xl font-bold hover:bg-gray-200 transition-colors flex items-center gap-2">
-              <Filter size={18} />
-              تصفية
-            </button>
+            <select
+              value={selectedClientId}
+              onChange={(e) => setSelectedClientId(e.target.value)}
+              className="bg-gray-100 text-gray-700 px-4 py-3 rounded-xl font-bold border-0 outline-none"
+            >
+              <option value="">كل العملاء</option>
+              {clients.map(client => (
+                <option key={client.id} value={client.id}>{client.name}</option>
+              ))}
+            </select>
             <button 
               onClick={() => navigate('/app/posts/new')}
               className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-lg shadow-blue-100"
@@ -130,27 +182,53 @@ const CalendarPage: React.FC = () => {
 
         {/* Calendar Grid */}
         <div className="grid grid-cols-7">
-          {days.map((day, index) => (
-            <div 
-              key={index}
-              className={`min-h-[120px] p-3 border-b border-l border-gray-50 ${
-                day === null ? 'bg-gray-50/50' : 'hover:bg-blue-50/30 cursor-pointer'
-              }`}
-            >
-              {day !== null && (
-                <>
-                  <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${
-                    isToday(day) 
-                      ? 'bg-blue-600 text-white' 
-                      : 'text-gray-700'
-                  }`}>
-                    {day}
-                  </span>
-                  {/* Posts for this day would go here */}
-                </>
-              )}
-            </div>
-          ))}
+          {days.map((day, index) => {
+            const dayPosts = day ? getPostsForDay(day) : [];
+            return (
+              <div 
+                key={index}
+                className={`min-h-[120px] p-3 border-b border-l border-gray-50 ${
+                  day === null ? 'bg-gray-50/50' : 'hover:bg-blue-50/30 cursor-pointer'
+                }`}
+                onClick={() => day && navigate(`/app/posts/new?date=${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`)}
+              >
+                {day !== null && (
+                  <>
+                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${
+                      isToday(day) 
+                        ? 'bg-blue-600 text-white' 
+                        : 'text-gray-700'
+                    }`}>
+                      {day}
+                    </span>
+                    {/* Posts for this day */}
+                    <div className="mt-2 space-y-1">
+                      {dayPosts.slice(0, 3).map(post => {
+                        const statusConfig = POST_STATUS_CONFIG[post.status];
+                        return (
+                          <div 
+                            key={post.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/app/posts/${post.id}`);
+                            }}
+                            className={`text-xs p-1.5 rounded-lg truncate font-bold ${statusConfig.color} hover:opacity-80`}
+                          >
+                            {post.title || post.client.name}
+                          </div>
+                        );
+                      })}
+                      {dayPosts.length > 3 && (
+                        <div className="text-xs text-gray-400 font-bold">
+                          +{dayPosts.length - 3} المزيد
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

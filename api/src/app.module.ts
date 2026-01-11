@@ -23,6 +23,7 @@ import { SurveyModule } from './survey/survey.module';
 import { SearchHistoryModule } from './search-history/search-history.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { ClientsModule } from './clients/clients.module';
+import { PostsModule } from './posts/posts.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { ClientsModule } from './clients/clients.module';
     SearchHistoryModule,
     WhatsAppModule,
     ClientsModule,
+    PostsModule,
   ],
 })
 export class AppModule {}

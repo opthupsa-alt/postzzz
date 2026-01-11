@@ -38,6 +38,10 @@ model Tenant {
   whatsappLogs  WhatsAppLog[]
   clients       Client[]
   clientPlatforms ClientPlatform[]
+  posts         Post[]
+  postVariants  PostVariant[]
+  mediaAssets   MediaAsset[]
+  platformRules PlatformRule[]
 
   @@map("tenants")
 }
@@ -67,6 +71,9 @@ model User {
   passwordResets  PasswordReset[]
   whatsappLogs    WhatsAppLog[]
   clientsCreated  Client[]       @relation("ClientCreatedBy")
+  postsCreated    Post[]         @relation("PostCreatedBy")
+  postsApproved   Post[]         @relation("PostApprovedBy")
+  mediaUploaded   MediaAsset[]   @relation("MediaUploadedBy")
 
   @@map("users")
 }
@@ -704,6 +711,7 @@ model Client {
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy   User?        @relation("ClientCreatedBy", fields: [createdById], references: [id])
   platforms   ClientPlatform[]
+  posts       Post[]
 
   @@index([tenantId, status])
   @@index([tenantId, name])
@@ -740,5 +748,114 @@ model ClientPlatform {
   @@index([tenantId])
   @@index([clientId])
   @@map("client_platforms")
+}
+
+// ==================== Social Ops: Posts ====================
+
+enum PostStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  ARCHIVED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+model Post {
+  id            String      @id @default(uuid())
+  tenantId      String
+  clientId      String
+  title         String?
+  scheduledAt   DateTime?
+  timezone      String      @default("Asia/Riyadh")
+  status        PostStatus  @default(DRAFT)
+  createdById   String
+  approvedById  String?
+  approvedAt    DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client        Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy     User        @relation("PostCreatedBy", fields: [createdById], references: [id])
+  approvedBy    User?       @relation("PostApprovedBy", fields: [approvedById], references: [id])
+  variants      PostVariant[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, clientId])
+  @@index([tenantId, scheduledAt])
+  @@map("posts")
+}
+
+model PostVariant {
+  id              String         @id @default(uuid())
+  tenantId        String
+  postId          String
+  platform        SocialPlatform
+  caption         String?        @db.Text
+  hashtags        String?
+  linkUrl         String?
+  mediaAssetIds   Json?
+  extra           Json?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  post            Post           @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, postId, platform])
+  @@index([tenantId])
+  @@index([postId])
+  @@map("post_variants")
+}
+
+model MediaAsset {
+  id            String    @id @default(uuid())
+  tenantId      String
+  type          MediaType
+  url           String
+  storageKey    String?
+  mimeType      String?
+  size          Int?
+  width         Int?
+  height        Int?
+  durationSec   Int?
+  checksum      String?
+  uploadedById  String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadedBy    User      @relation("MediaUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@map("media_assets")
+}
+
+model PlatformRule {
+  id                String         @id @default(uuid())
+  tenantId          String?
+  platform          SocialPlatform
+  maxCaptionLength  Int?
+  maxHashtags       Int?
+  allowLink         Boolean        @default(true)
+  allowedMediaTypes Json?
+  maxMediaCount     Int?
+  notes             String?
+  updatedAt         DateTime       @updatedAt
+
+  tenant            Tenant?        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, platform])
+  @@index([platform])
+  @@map("platform_rules")
 }
 
