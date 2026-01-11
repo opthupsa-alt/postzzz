@@ -126,4 +126,27 @@ export class LeadsController {
   ) {
     return this.leadsService.delete(id, user.tenantId);
   }
+
+  @Patch(':id/enrich')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permissions.LEAD_EDIT)
+  @ApiOperation({ summary: 'Enrich lead with search data from extension' })
+  @ApiResponse({ status: 200, description: 'Lead enriched with search data' })
+  async enrichWithSearchData(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() searchData: {
+      socialLinks?: Record<string, string>;
+      socialProfiles?: Record<string, any>;
+      email?: string;
+      allEmails?: string[];
+      allPhones?: string[];
+      website?: string;
+      description?: string;
+      googleMapsUrl?: string;
+      reviewCount?: number;
+    },
+  ) {
+    return this.leadsService.enrichWithSearchData(id, user.tenantId, searchData);
+  }
 }

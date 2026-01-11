@@ -1,6 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
-import { Users, Search, Download, MessageSquare, Plus, CheckCircle2, Clock, Trash2, Building2, ShieldAlert, Upload, UserPlus, FileText, Layers, ExternalLink } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Users, Search, Download, MessageSquare, Plus, CheckCircle2, Clock, Trash2, Building2, ShieldAlert, Upload, UserPlus, FileText, Layers, ExternalLink, Loader2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useNavigate, Link } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
@@ -12,25 +12,57 @@ import WhatsAppModal from '../components/WhatsAppModal';
 import DataTable from '../components/DataTable';
 import { JobStatus, Lead } from '../types';
 import { showToast } from '../components/NotificationToast';
+import { getLeads, deleteLead as apiDeleteLead, Lead as ApiLead } from '../lib/api';
 
 const LeadsManagementPage: React.FC = () => {
   const navigate = useNavigate();
-  const { savedLeads, removeLead, addJob, updateJob } = useStore();
+  const { addJob, updateJob } = useStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilters, setActiveFilters] = useState<any>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showWhatsApp, setShowWhatsApp] = useState(false);
-  const [isLoading] = useState(false);
+  const [whatsAppLead, setWhatsAppLead] = useState<ApiLead | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [leads, setLeads] = useState<ApiLead[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch leads from API
+  useEffect(() => {
+    const fetchLeads = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const data = await getLeads();
+        setLeads(data);
+      } catch (err: any) {
+        setError(err.message || 'فشل في جلب العملاء المحتملين');
+        console.error('Error fetching leads:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchLeads();
+  }, []);
+
+  const removeLead = async (id: string) => {
+    try {
+      await apiDeleteLead(id);
+      setLeads(prev => prev.filter(l => l.id !== id));
+      showToast('SUCCESS', 'تم الحذف', 'تم حذف العميل المحتمل بنجاح');
+    } catch (err: any) {
+      showToast('ERROR', 'خطأ', err.message || 'فشل في حذف العميل');
+    }
+  };
 
   const filteredLeads = useMemo(() => {
-    return savedLeads.filter(l => {
+    return leads.filter(l => {
       const matchesSearch = l.companyName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                           l.industry.toLowerCase().includes(searchTerm.toLowerCase());
+                           (l.industry || '').toLowerCase().includes(searchTerm.toLowerCase());
       if (activeFilters.status && l.status !== activeFilters.status) return false;
       if (activeFilters.hasPhone && !l.phone) return false;
       return matchesSearch;
     });
-  }, [savedLeads, searchTerm, activeFilters]);
+  }, [leads, searchTerm, activeFilters]);
 
   const handleBulkExport = () => {
     if (selectedIds.length === 0) return;
@@ -74,7 +106,7 @@ const LeadsManagementPage: React.FC = () => {
   const columns = [
     {
       header: 'العميل',
-      accessor: (l: Lead) => (
+      accessor: (l: ApiLead) => (
         <div className="flex items-center gap-4 group">
           <div className="h-12 w-12 bg-white border border-gray-100 text-blue-600 rounded-2xl flex items-center justify-center font-black shadow-sm group-hover:bg-blue-600 group-hover:text-white transition-all duration-500">
             {l.companyName[0]}
@@ -82,31 +114,33 @@ const LeadsManagementPage: React.FC = () => {
           <div>
             <p className="font-black text-gray-900 group-hover:text-blue-600 transition-colors">{l.companyName}</p>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[10px] text-gray-400 font-bold">{l.industry}</span>
+              <span className="text-[10px] text-gray-400 font-bold">{l.industry || '-'}</span>
               <span className="text-gray-200">•</span>
-              <span className="text-[10px] text-gray-400 font-bold">{l.city}</span>
+              <span className="text-[10px] text-gray-400 font-bold">{l.city || '-'}</span>
             </div>
           </div>
         </div>
       )
     },
     {
-      header: 'التحليل الرقمي',
+      header: 'التواصل',
       className: 'text-center',
-      accessor: (l: Lead) => (
+      accessor: (l: ApiLead) => (
         <div className="flex items-center justify-center gap-6">
            <div className="flex flex-col items-center group/icon">
-             <div className="p-2 bg-gray-50 rounded-xl group-hover/icon:bg-blue-50 transition-colors">
-               <Layers size={16} className="text-gray-400 group-hover/icon:text-blue-600" />
+             <div className={`p-2 rounded-xl transition-colors ${l.phone ? 'bg-green-50' : 'bg-gray-50'}`}>
+               <Layers size={16} className={l.phone ? 'text-green-600' : 'text-gray-400'} />
              </div>
-             <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-1">{l.evidenceCount} أدلة</span>
+             <span className={`text-[9px] font-black uppercase tracking-widest mt-1 ${l.phone ? 'text-green-600' : 'text-gray-400'}`}>
+               {l.phone ? 'هاتف' : 'لا يوجد'}
+             </span>
            </div>
            <div className="flex flex-col items-center group/icon">
-             <div className={`p-2 rounded-xl transition-colors ${l.hasReport ? 'bg-green-50' : 'bg-gray-50'}`}>
-               <FileText size={16} className={l.hasReport ? 'text-green-600' : 'text-gray-400'} />
+             <div className={`p-2 rounded-xl transition-colors ${l.website ? 'bg-blue-50' : 'bg-gray-50'}`}>
+               <ExternalLink size={16} className={l.website ? 'text-blue-600' : 'text-gray-400'} />
              </div>
-             <span className={`text-[9px] font-black uppercase tracking-widest mt-1 ${l.hasReport ? 'text-green-600' : 'text-gray-400'}`}>
-               {l.hasReport ? 'جاهز' : 'مطلوب'}
+             <span className={`text-[9px] font-black uppercase tracking-widest mt-1 ${l.website ? 'text-blue-600' : 'text-gray-400'}`}>
+               {l.website ? 'موقع' : 'لا يوجد'}
              </span>
            </div>
         </div>
@@ -114,7 +148,7 @@ const LeadsManagementPage: React.FC = () => {
     },
     {
       header: 'الحالة',
-      accessor: (l: Lead) => (
+      accessor: (l: ApiLead) => (
         <span className={`inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black border uppercase tracking-widest ${
           l.status === 'QUALIFIED' ? 'bg-green-50 text-green-600 border-green-100 shadow-sm shadow-green-50' : 
           l.status === 'CONTACTED' ? 'bg-blue-50 text-blue-600 border-blue-100 shadow-sm shadow-blue-50' : 
@@ -158,7 +192,20 @@ const LeadsManagementPage: React.FC = () => {
       </div>
 
       {isLoading ? (
-        <TableSkeleton />
+        <div className="flex flex-col items-center justify-center py-20">
+          <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
+          <p className="text-gray-500 font-bold">جاري تحميل العملاء المحتملين...</p>
+        </div>
+      ) : error ? (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center">
+          <p className="text-red-600 font-bold">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-4 bg-red-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-red-700"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
       ) : filteredLeads.length > 0 ? (
         <DataTable 
           data={filteredLeads}
@@ -169,14 +216,14 @@ const LeadsManagementPage: React.FC = () => {
           actions={(l) => (
             <>
               <button 
-                onClick={(e) => { e.stopPropagation(); navigate(`/app/companies/${l.id}`); }} 
+                onClick={(e) => { e.stopPropagation(); navigate(`/app/leads/${l.id}`); }} 
                 className="p-3 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                title="عرض الشركة"
+                title="عرض تفاصيل العميل"
               >
                 <Building2 size={18} />
               </button>
               <button 
-                onClick={(e) => { e.stopPropagation(); setShowWhatsApp(true); }} 
+                onClick={(e) => { e.stopPropagation(); setWhatsAppLead(l); setShowWhatsApp(true); }} 
                 className="p-3 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition-all"
                 title="تواصل واتساب"
               >
@@ -210,11 +257,12 @@ const LeadsManagementPage: React.FC = () => {
         onClear={() => setSelectedIds([])} 
         onSaveToList={() => {}} 
         onBulkWhatsApp={() => setShowWhatsApp(true)}
-        onBulkDelete={() => {
+        onBulkDelete={async () => {
           if (confirm(`هل أنت متأكد من حذف ${selectedIds.length} عميل؟`)) {
-            selectedIds.forEach(id => removeLead(id));
+            for (const id of selectedIds) {
+              await removeLead(id);
+            }
             setSelectedIds([]);
-            showToast('INFO', 'حذف جماعي', 'تم حذف العملاء بنجاح.');
           }
         }}
         onBulkApprove={handleBulkReveal}
@@ -222,8 +270,9 @@ const LeadsManagementPage: React.FC = () => {
 
       <WhatsAppModal 
         isOpen={showWhatsApp} 
-        onClose={() => setShowWhatsApp(false)} 
-        leadName={selectedIds.length > 1 ? `${selectedIds.length} عملاء مختارين` : filteredLeads.find(l => l.id === selectedIds[0])?.companyName || ''}
+        onClose={() => { setShowWhatsApp(false); setWhatsAppLead(null); }} 
+        leadName={whatsAppLead?.companyName || (selectedIds.length > 1 ? `${selectedIds.length} عملاء مختارين` : filteredLeads.find(l => l.id === selectedIds[0])?.companyName || '')}
+        phone={whatsAppLead?.phone || ''}
       />
     </div>
   );

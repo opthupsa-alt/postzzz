@@ -494,6 +494,26 @@
           <div style="margin-top: 12px; background: #e2e8f0; border-radius: 8px; height: 8px; overflow: hidden;">
             <div id="jobProgressBar" style="background: linear-gradient(90deg, #3b82f6, #1d4ed8); height: 100%; width: 0%; transition: width 0.3s;"></div>
           </div>
+          <!-- زر إيقاف البحث -->
+          <button id="stopSearchBtn" style="
+            margin-top: 12px;
+            width: 100%;
+            padding: 10px 16px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: background 0.2s;
+          ">
+            ⏹️ إيقاف البحث
+          </button>
         </div>
       </div>
       
@@ -531,6 +551,12 @@
         <p>افتح المنصة وابدأ البحث من هناك. الإضافة ستنفذ عمليات البحث تلقائياً.</p>
       </div>
       
+      <!-- Deep Report Section -->
+      <div id="deepReportSection" class="status-card" style="display: none;">
+        <h3>📊 تقرير شامل</h3>
+        <div id="deepReportContainer"></div>
+      </div>
+      
       <!-- Actions -->
       <div class="actions">
         <button id="openPlatformBtn" class="action-btn">
@@ -538,6 +564,14 @@
           <div class="action-text">
             <h4>فتح المنصة</h4>
             <p>افتح لوحة تحكم ليدز للبحث</p>
+          </div>
+        </button>
+        
+        <button id="testDeepSearchBtn" class="action-btn">
+          <div class="action-icon">🔍</div>
+          <div class="action-text">
+            <h4>اختبار البحث الشامل</h4>
+            <p>تجربة البحث في Google + السوشيال</p>
           </div>
         </button>
       </div>

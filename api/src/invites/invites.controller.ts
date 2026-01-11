@@ -49,13 +49,21 @@ export class InvitesController {
     return this.invitesService.getByTenant(user.tenantId);
   }
 
-  @Post('accept')
+  @Get(':token/validate')
+  @ApiOperation({ summary: 'Validate an invite token' })
+  @ApiResponse({ status: 200, description: 'Invite validation result' })
+  async validate(@Param('token') token: string) {
+    return this.invitesService.validate(token);
+  }
+
+  @Post(':token/accept')
   @ApiOperation({ summary: 'Accept an invite' })
   @ApiResponse({ status: 200, description: 'Invite accepted' })
   async accept(
-    @Body() body: { token: string; password: string; name?: string },
+    @Param('token') token: string,
+    @Body() body: { password?: string; name?: string },
   ) {
-    return this.invitesService.accept(body.token, body.password, body.name);
+    return this.invitesService.accept(token, body.password, body.name);
   }
 
   @Delete(':id')

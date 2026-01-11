@@ -3,14 +3,20 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { EmailService } from '../common/services/email.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -20,6 +26,8 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private auditService: AuditService,
+    private emailService: EmailService,
+    private configService: ConfigService,
   ) {}
 
   async signup(dto: SignupDto, ipAddress?: string, userAgent?: string) {
@@ -234,5 +242,107 @@ export class AuthService {
 
     const random = Math.random().toString(36).substring(2, 8);
     return `${base}-${random}`;
+  }
+
+  // ==================== Password Reset ====================
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email.toLowerCase() },
+    });
+
+    // Always return success to prevent email enumeration
+    if (!user) {
+      this.logger.warn(`Password reset requested for non-existent email: ${dto.email}`);
+      return { message: 'If the email exists, a reset link has been sent' };
+    }
+
+    // Delete any existing reset tokens for this user
+    await this.prisma.passwordReset.deleteMany({
+      where: { userId: user.id },
+    });
+
+    // Generate secure token
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // Save reset token
+    await this.prisma.passwordReset.create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt,
+      },
+    });
+
+    // Build reset URL
+    const platformUrl = this.configService.get('PLATFORM_URL') || 'http://localhost:3000';
+    const resetUrl = `${platformUrl}/#/reset-password?token=${token}`;
+
+    // Send email
+    await this.emailService.sendPasswordResetEmail(user.email, resetUrl, user.name);
+
+    this.logger.log(`Password reset email sent to ${user.email}`);
+
+    return { message: 'If the email exists, a reset link has been sent' };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    // Find valid reset token
+    const resetRecord = await this.prisma.passwordReset.findUnique({
+      where: { token: dto.token },
+      include: { user: true },
+    });
+
+    if (!resetRecord) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    if (resetRecord.usedAt) {
+      throw new BadRequestException('This reset link has already been used');
+    }
+
+    if (new Date() > resetRecord.expiresAt) {
+      throw new BadRequestException('Reset link has expired');
+    }
+
+    // Hash new password
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+
+    // Update password and mark token as used
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: resetRecord.userId },
+        data: { passwordHash },
+      }),
+      this.prisma.passwordReset.update({
+        where: { id: resetRecord.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    this.logger.log(`Password reset successful for user ${resetRecord.user.email}`);
+
+    return { message: 'Password has been reset successfully' };
+  }
+
+  async validateResetToken(token: string) {
+    const resetRecord = await this.prisma.passwordReset.findUnique({
+      where: { token },
+    });
+
+    if (!resetRecord) {
+      return { valid: false, message: 'Invalid token' };
+    }
+
+    if (resetRecord.usedAt) {
+      return { valid: false, message: 'Token already used' };
+    }
+
+    if (new Date() > resetRecord.expiresAt) {
+      return { valid: false, message: 'Token expired' };
+    }
+
+    return { valid: true };
   }
 }

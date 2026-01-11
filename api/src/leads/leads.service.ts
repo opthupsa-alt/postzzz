@@ -160,4 +160,60 @@ export class LeadsService {
       recentLeads,
     };
   }
+
+  /**
+   * إثراء الـ Lead ببيانات البحث من الإكستنشن
+   */
+  async enrichWithSearchData(
+    id: string,
+    tenantId: string,
+    searchData: {
+      socialLinks?: Record<string, string>;
+      socialProfiles?: Record<string, any>;
+      email?: string;
+      allEmails?: string[];
+      allPhones?: string[];
+      website?: string;
+      description?: string;
+      googleMapsUrl?: string;
+      reviewCount?: number;
+    },
+  ) {
+    const lead = await this.findById(id, tenantId);
+    const existingMetadata = (lead.metadata as any) || {};
+
+    const updatedMetadata = {
+      ...existingMetadata,
+      socialLinks: {
+        ...(existingMetadata.socialLinks || {}),
+        ...(searchData.socialLinks || {}),
+      },
+      socialProfiles: {
+        ...(existingMetadata.socialProfiles || {}),
+        ...(searchData.socialProfiles || {}),
+      },
+      email: searchData.email || existingMetadata.email,
+      allEmails: [...new Set([
+        ...(existingMetadata.allEmails || []),
+        ...(searchData.allEmails || []),
+      ])],
+      allPhones: [...new Set([
+        ...(existingMetadata.allPhones || []),
+        ...(searchData.allPhones || []),
+      ])],
+      description: searchData.description || existingMetadata.description,
+      googleMapsUrl: searchData.googleMapsUrl || existingMetadata.googleMapsUrl,
+      reviewCount: searchData.reviewCount || existingMetadata.reviewCount,
+      enrichedAt: new Date().toISOString(),
+    };
+
+    return this.prisma.lead.update({
+      where: { id: lead.id },
+      data: {
+        email: searchData.email || lead.email,
+        website: searchData.website || lead.website,
+        metadata: updatedMetadata,
+      },
+    });
+  }
 }

@@ -27,6 +27,8 @@ async function bootstrap() {
       'http://localhost:5173',
       'http://localhost:3000',
       'http://localhost:3002',
+      'https://leedz.vercel.app',
+      'https://leedz-opthupsa-5935s-projects.vercel.app',
     ]),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

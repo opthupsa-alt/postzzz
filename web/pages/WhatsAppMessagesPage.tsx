@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   MessageSquare, 
   Search, 
@@ -21,19 +21,31 @@ import {
   ArrowLeft,
   Wand2,
   Sparkles,
-  // Fix: add missing ExternalLink and Zap icons
   ExternalLink,
-  Zap
+  Zap,
+  QrCode,
+  Wifi,
+  WifiOff,
+  Loader2,
+  RefreshCw,
+  Send
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
 import { Activity, WhatsAppTemplate } from '../types';
 import { showToast } from '../components/NotificationToast';
+import { 
+  getWhatsAppWebStatus, 
+  initializeWhatsAppWeb, 
+  disconnectWhatsAppWeb,
+  sendWhatsAppWebMessage,
+  WhatsAppWebStatus 
+} from '../lib/api';
 
 const WhatsAppMessagesPage: React.FC = () => {
   const navigate = useNavigate();
   const { activities, leads, templates, addTemplate, updateTemplate, deleteTemplate, connectedPhone, setConnectedPhone } = useStore();
-  const [activeTab, setActiveTab] = useState<'LOG' | 'TEMPLATES'>('LOG');
+  const [activeTab, setActiveTab] = useState<'LOG' | 'TEMPLATES' | 'CONNECTION'>('LOG');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'SUCCESS' | 'FAILED'>('ALL');
   const [showAddTemplate, setShowAddTemplate] = useState(false);
@@ -43,6 +55,100 @@ const WhatsAppMessagesPage: React.FC = () => {
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [tempPhone, setTempPhone] = useState(connectedPhone);
   const [isUpdatingPhone, setIsUpdatingPhone] = useState(false);
+
+  // WhatsApp Web (QR Code) state
+  const [webStatus, setWebStatus] = useState<WhatsAppWebStatus>({
+    status: 'disconnected',
+    qrCode: null,
+    phoneNumber: null,
+    error: null,
+  });
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [testPhone, setTestPhone] = useState('');
+  const [testMessage, setTestMessage] = useState('');
+  const [isSendingTest, setIsSendingTest] = useState(false);
+
+  // Fetch WhatsApp Web status on mount and periodically
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const status = await getWhatsAppWebStatus();
+        setWebStatus(status);
+      } catch (err) {
+        console.error('Failed to fetch WhatsApp Web status:', err);
+      }
+    };
+
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleInitializeWeb = async () => {
+    setIsInitializing(true);
+    try {
+      const result = await initializeWhatsAppWeb();
+      if (result.success) {
+        showToast('INFO', 'جاري الربط', 'يرجى مسح رمز QR من تطبيق واتساب');
+        // Start polling more frequently
+        const pollInterval = setInterval(async () => {
+          const status = await getWhatsAppWebStatus();
+          setWebStatus(status);
+          if (status.status === 'connected' || status.status === 'failed') {
+            clearInterval(pollInterval);
+            setIsInitializing(false);
+            if (status.status === 'connected') {
+              showToast('SUCCESS', 'تم الربط', 'تم ربط واتساب بنجاح!');
+            }
+          }
+        }, 2000);
+        // Stop polling after 2 minutes
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          setIsInitializing(false);
+        }, 120000);
+      } else {
+        showToast('ERROR', 'خطأ', result.message);
+        setIsInitializing(false);
+      }
+    } catch (err: any) {
+      showToast('ERROR', 'خطأ', err.message || 'فشل في بدء الربط');
+      setIsInitializing(false);
+    }
+  };
+
+  const handleDisconnectWeb = async () => {
+    if (!confirm('هل أنت متأكد من قطع اتصال واتساب؟')) return;
+    try {
+      await disconnectWhatsAppWeb();
+      setWebStatus({ status: 'disconnected', qrCode: null, phoneNumber: null, error: null });
+      showToast('SUCCESS', 'تم القطع', 'تم قطع اتصال واتساب');
+    } catch (err: any) {
+      showToast('ERROR', 'خطأ', err.message || 'فشل في قطع الاتصال');
+    }
+  };
+
+  const handleSendTestMessage = async () => {
+    if (!testPhone || !testMessage) {
+      showToast('ERROR', 'خطأ', 'يرجى إدخال رقم الهاتف والرسالة');
+      return;
+    }
+    setIsSendingTest(true);
+    try {
+      const result = await sendWhatsAppWebMessage(testPhone, testMessage);
+      if (result.success) {
+        showToast('SUCCESS', 'تم الإرسال', 'تم إرسال الرسالة بنجاح');
+        setTestPhone('');
+        setTestMessage('');
+      } else {
+        showToast('ERROR', 'خطأ', result.error || 'فشل في إرسال الرسالة');
+      }
+    } catch (err: any) {
+      showToast('ERROR', 'خطأ', err.message || 'فشل في إرسال الرسالة');
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
 
   const whatsappHistory = useMemo(() => {
     const allActivities = (Object.values(activities) as Activity[][]).flat();
@@ -138,6 +244,13 @@ const WhatsAppMessagesPage: React.FC = () => {
 
       <div className="flex bg-white p-1 rounded-2xl border border-gray-100 shadow-sm w-fit">
         <button 
+          onClick={() => setActiveTab('CONNECTION')}
+          className={`px-8 py-2.5 rounded-xl text-sm font-black transition-all flex items-center gap-2 ${activeTab === 'CONNECTION' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'text-gray-400 hover:text-gray-600'}`}
+        >
+          <QrCode size={16} /> ربط واتساب
+          {webStatus.status === 'connected' && <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>}
+        </button>
+        <button 
           onClick={() => setActiveTab('LOG')}
           className={`px-8 py-2.5 rounded-xl text-sm font-black transition-all flex items-center gap-2 ${activeTab === 'LOG' ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'text-gray-400 hover:text-gray-600'}`}
         >
@@ -151,7 +264,195 @@ const WhatsAppMessagesPage: React.FC = () => {
         </button>
       </div>
 
-      {activeTab === 'LOG' ? (
+      {activeTab === 'CONNECTION' ? (
+        <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+          {/* Connection Status Card */}
+          <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm">
+            <div className="flex flex-col lg:flex-row gap-10">
+              {/* QR Code Section */}
+              <div className="flex-1">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className={`p-4 rounded-2xl ${webStatus.status === 'connected' ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600'}`}>
+                    {webStatus.status === 'connected' ? <Wifi size={32} /> : <QrCode size={32} />}
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black text-gray-900">ربط واتساب عبر QR Code</h2>
+                    <p className="text-gray-500 font-bold">اربط حسابك الشخصي لإرسال الرسائل مباشرة</p>
+                  </div>
+                </div>
+
+                {/* Status Display */}
+                <div className={`p-6 rounded-2xl mb-6 ${
+                  webStatus.status === 'connected' ? 'bg-green-50 border border-green-100' :
+                  webStatus.status === 'failed' ? 'bg-red-50 border border-red-100' :
+                  webStatus.status === 'qr_ready' ? 'bg-blue-50 border border-blue-100' :
+                  'bg-gray-50 border border-gray-100'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    {webStatus.status === 'connected' && <CheckCircle2 className="text-green-600" size={24} />}
+                    {webStatus.status === 'disconnected' && <WifiOff className="text-gray-400" size={24} />}
+                    {webStatus.status === 'qr_ready' && <QrCode className="text-blue-600" size={24} />}
+                    {webStatus.status === 'connecting' && <Loader2 className="text-blue-600 animate-spin" size={24} />}
+                    {webStatus.status === 'initializing' && <Loader2 className="text-blue-600 animate-spin" size={24} />}
+                    {webStatus.status === 'failed' && <XCircle className="text-red-600" size={24} />}
+                    <span className={`font-black ${
+                      webStatus.status === 'connected' ? 'text-green-700' :
+                      webStatus.status === 'failed' ? 'text-red-700' :
+                      webStatus.status === 'qr_ready' ? 'text-blue-700' :
+                      'text-gray-600'
+                    }`}>
+                      {webStatus.status === 'connected' && 'متصل - جاهز للإرسال'}
+                      {webStatus.status === 'disconnected' && 'غير متصل'}
+                      {webStatus.status === 'qr_ready' && 'امسح رمز QR من تطبيق واتساب'}
+                      {webStatus.status === 'connecting' && 'جاري الاتصال...'}
+                      {webStatus.status === 'initializing' && 'جاري التهيئة...'}
+                      {webStatus.status === 'failed' && `فشل الاتصال: ${webStatus.error || 'خطأ غير معروف'}`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* QR Code Display */}
+                {webStatus.status === 'qr_ready' && webStatus.qrCode && (
+                  <div className="flex flex-col items-center p-8 bg-white border-2 border-dashed border-blue-200 rounded-3xl mb-6">
+                    <img src={webStatus.qrCode} alt="WhatsApp QR Code" className="w-64 h-64 rounded-2xl shadow-lg" />
+                    <p className="text-sm text-gray-500 font-bold mt-4 text-center">
+                      افتح واتساب على هاتفك → الإعدادات → الأجهزة المرتبطة → ربط جهاز
+                    </p>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-4">
+                  {webStatus.status === 'disconnected' && (
+                    <button
+                      onClick={handleInitializeWeb}
+                      disabled={isInitializing}
+                      className="flex-1 bg-green-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-green-100 hover:bg-green-700 transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
+                    >
+                      {isInitializing ? (
+                        <Loader2 className="animate-spin" size={24} />
+                      ) : (
+                        <>
+                          <QrCode size={24} />
+                          بدء الربط عبر QR Code
+                        </>
+                      )}
+                    </button>
+                  )}
+                  {(webStatus.status === 'qr_ready' || webStatus.status === 'connecting') && (
+                    <button
+                      onClick={handleInitializeWeb}
+                      className="px-6 py-4 bg-gray-100 text-gray-600 rounded-2xl font-black hover:bg-gray-200 transition-all flex items-center gap-2"
+                    >
+                      <RefreshCw size={20} />
+                      تحديث QR
+                    </button>
+                  )}
+                  {webStatus.status === 'connected' && (
+                    <button
+                      onClick={handleDisconnectWeb}
+                      className="flex-1 bg-red-50 text-red-600 px-8 py-4 rounded-2xl font-black border border-red-200 hover:bg-red-100 transition-all flex items-center justify-center gap-3"
+                    >
+                      <WifiOff size={24} />
+                      قطع الاتصال
+                    </button>
+                  )}
+                  {webStatus.status === 'failed' && (
+                    <button
+                      onClick={handleInitializeWeb}
+                      disabled={isInitializing}
+                      className="flex-1 bg-blue-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all flex items-center justify-center gap-3"
+                    >
+                      <RefreshCw size={24} />
+                      إعادة المحاولة
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Test Message Section (only when connected) */}
+              {webStatus.status === 'connected' && (
+                <div className="flex-1 border-t lg:border-t-0 lg:border-r border-gray-100 pt-8 lg:pt-0 lg:pr-10">
+                  <h3 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-3">
+                    <Send size={24} className="text-green-600" />
+                    إرسال رسالة تجريبية
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 px-2">رقم الهاتف</label>
+                      <input
+                        type="text"
+                        placeholder="05XXXXXXXX"
+                        value={testPhone}
+                        onChange={(e) => setTestPhone(e.target.value)}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-6 font-bold focus:ring-4 focus:ring-green-500/10 focus:border-green-500 outline-none transition-all"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 px-2">الرسالة</label>
+                      <textarea
+                        rows={4}
+                        placeholder="اكتب رسالتك هنا..."
+                        value={testMessage}
+                        onChange={(e) => setTestMessage(e.target.value)}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 px-6 font-bold focus:ring-4 focus:ring-green-500/10 focus:border-green-500 outline-none transition-all resize-none"
+                      />
+                    </div>
+                    <button
+                      onClick={handleSendTestMessage}
+                      disabled={isSendingTest || !testPhone || !testMessage}
+                      className="w-full bg-green-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-green-100 hover:bg-green-700 transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50"
+                    >
+                      {isSendingTest ? (
+                        <Loader2 className="animate-spin" size={20} />
+                      ) : (
+                        <>
+                          <Send size={20} />
+                          إرسال الرسالة
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Info Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-gradient-to-br from-green-50 to-green-100/50 p-8 rounded-[2.5rem] border border-green-100">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="p-3 bg-green-500 text-white rounded-2xl">
+                  <Smartphone size={24} />
+                </div>
+                <h3 className="font-black text-green-900 text-lg">ربط واتساب الشخصي</h3>
+              </div>
+              <ul className="space-y-2 text-sm text-green-800 font-bold">
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} /> إرسال مباشر من حسابك</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} /> لا يحتاج Meta Business API</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} /> مجاني بالكامل</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} /> سهل الإعداد</li>
+              </ul>
+            </div>
+
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 p-8 rounded-[2.5rem] border border-blue-100">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="p-3 bg-blue-500 text-white rounded-2xl">
+                  <ShieldCheck size={24} />
+                </div>
+                <h3 className="font-black text-blue-900 text-lg">Meta Business API</h3>
+              </div>
+              <ul className="space-y-2 text-sm text-blue-800 font-bold">
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} /> رسائل رسمية موثقة</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} /> قوالب معتمدة من Meta</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} /> تقارير تسليم متقدمة</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} /> مناسب للشركات الكبيرة</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      ) : activeTab === 'LOG' ? (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-4 group hover:border-blue-200 transition-colors">

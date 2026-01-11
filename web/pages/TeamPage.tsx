@@ -9,20 +9,27 @@ import {
 import PageHeader from '../components/PageHeader';
 import Guard from '../components/Guard';
 import { showToast } from '../components/NotificationToast';
-import { getTeamMembers, createInvite, removeMember, TeamMember as ApiTeamMember } from '../lib/api';
+import { getTeamMembers, createInvite, removeMember, updateMemberRole, getInvites, deleteInvite, TeamMember as ApiTeamMember, Invite } from '../lib/api';
 
 const TeamPage: React.FC = () => {
   const [team, setTeam] = useState<ApiTeamMember[]>([]);
+  const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState<string | null>(null);
   const [newMember, setNewMember] = useState({ email: '', role: 'SALES' });
   const [isInviting, setIsInviting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const loadTeam = async () => {
     try {
       setLoading(true);
-      const members = await getTeamMembers();
+      const [members, pendingInvites] = await Promise.all([
+        getTeamMembers(),
+        getInvites()
+      ]);
       setTeam(members);
+      setInvites(pendingInvites.filter(i => i.status === 'PENDING'));
     } catch (err: any) {
       console.error('Failed to load team:', err);
       showToast('ERROR', 'خطأ', 'فشل تحميل بيانات الفريق');
@@ -41,7 +48,8 @@ const TeamPage: React.FC = () => {
     
     setIsInviting(true);
     try {
-      await createInvite({ email: newMember.email, role: newMember.role });
+      const invite = await createInvite({ email: newMember.email, role: newMember.role });
+      setInvites([...invites, invite]);
       setNewMember({ email: '', role: 'SALES' });
       setShowInvite(false);
       showToast('SUCCESS', 'تم إرسال الدعوة', 'سيصل العضو الجديد رابط تفعيل الحساب.');
@@ -56,12 +64,39 @@ const TeamPage: React.FC = () => {
     if (!confirm('هل أنت متأكد من حذف هذا العضو؟')) return;
     try {
       await removeMember(userId);
-      setTeam(team.filter(m => m.userId !== userId));
+      setTeam(team.filter(m => m.id !== userId));
       showToast('SUCCESS', 'تم الحذف', 'تم حذف العضو بنجاح');
     } catch (err: any) {
       showToast('ERROR', 'خطأ', err.message || 'فشل حذف العضو');
     }
   };
+
+  const handleUpdateRole = async (userId: string, newRole: string) => {
+    try {
+      await updateMemberRole(userId, newRole);
+      setTeam(team.map(m => m.id === userId ? { ...m, role: newRole as any } : m));
+      setShowRoleModal(null);
+      showToast('SUCCESS', 'تم التحديث', 'تم تغيير صلاحيات العضو بنجاح');
+    } catch (err: any) {
+      showToast('ERROR', 'خطأ', err.message || 'فشل تغيير الصلاحيات');
+    }
+  };
+
+  const handleCancelInvite = async (inviteId: string) => {
+    if (!confirm('هل أنت متأكد من إلغاء هذه الدعوة؟')) return;
+    try {
+      await deleteInvite(inviteId);
+      setInvites(invites.filter(i => i.id !== inviteId));
+      showToast('SUCCESS', 'تم الإلغاء', 'تم إلغاء الدعوة بنجاح');
+    } catch (err: any) {
+      showToast('ERROR', 'خطأ', err.message || 'فشل إلغاء الدعوة');
+    }
+  };
+
+  const filteredTeam = team.filter(m => 
+    m.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    m.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <Guard role="ADMIN">
@@ -111,11 +146,15 @@ const TeamPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-4">
                <div className="relative group">
-                 {/* Fixed: Added missing Search icon import */}
                  <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600" size={18} />
-                 <input type="text" placeholder="البحث عن موظف..." className="bg-white border border-gray-100 py-3 pr-11 pl-4 rounded-xl text-sm font-bold focus:ring-4 focus:ring-blue-500/10 outline-none transition-all w-64 shadow-sm" />
+                 <input 
+                   type="text" 
+                   placeholder="البحث عن موظف..." 
+                   className="bg-white border border-gray-100 py-3 pr-11 pl-4 rounded-xl text-sm font-bold focus:ring-4 focus:ring-blue-500/10 outline-none transition-all w-64 shadow-sm"
+                   value={searchTerm}
+                   onChange={(e) => setSearchTerm(e.target.value)}
+                 />
                </div>
-               {/* Fixed: Added missing Filter icon import */}
                <button className="p-3 bg-white border border-gray-100 rounded-xl text-gray-500 hover:text-blue-600 shadow-sm transition-all"><Filter size={20} /></button>
             </div>
           </div>
@@ -125,65 +164,132 @@ const TeamPage: React.FC = () => {
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="animate-spin text-blue-600" size={32} />
               </div>
-            ) : team.length === 0 ? (
+            ) : filteredTeam.length === 0 && invites.length === 0 ? (
               <div className="text-center py-20 text-gray-400">
                 <Users size={48} className="mx-auto mb-4 opacity-50" />
                 <p className="font-bold">لا يوجد أعضاء في الفريق</p>
                 <p className="text-sm">قم بدعوة أعضاء جدد للانضمام</p>
               </div>
-            ) : team.map((member) => (
-              <div key={member.id} className="p-8 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50/50 transition-all group gap-6">
-                <div className="flex items-center gap-6">
-                  <div className="relative">
-                    <div className="h-16 w-16 bg-white border border-gray-100 text-blue-600 rounded-[1.5rem] flex items-center justify-center font-black text-2xl shadow-sm group-hover:scale-110 transition-transform duration-500 ring-4 ring-transparent group-hover:ring-blue-50">
-                      {member.user?.name?.[0] || member.user?.email?.[0] || '?'}
-                    </div>
-                    <span className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-4 border-white shadow-md ${member.user?.isActive ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+            ) : (
+              <>
+                {/* Pending Invites */}
+                {invites.length > 0 && (
+                  <div className="bg-yellow-50/50 border-b border-yellow-100">
+                    <div className="p-4 text-xs font-black text-yellow-700 uppercase tracking-widest">دعوات معلقة ({invites.length})</div>
+                    {invites.map((invite) => (
+                      <div key={invite.id} className="p-6 flex items-center justify-between hover:bg-yellow-50 transition-all border-t border-yellow-100/50">
+                        <div className="flex items-center gap-4">
+                          <div className="h-12 w-12 bg-yellow-100 text-yellow-600 rounded-xl flex items-center justify-center">
+                            <Mail size={20} />
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-900">{invite.email}</p>
+                            <p className="text-xs text-gray-400">
+                              {invite.role === 'ADMIN' ? 'مدير نظام' : invite.role === 'MANAGER' ? 'مدير فريق' : 'مندوب مبيعات'}
+                              {' • '}
+                              تنتهي: {new Date(invite.expiresAt).toLocaleDateString('ar-SA')}
+                            </p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => handleCancelInvite(invite.id)}
+                          className="px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                        >
+                          إلغاء الدعوة
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <p className="text-xl font-black text-gray-900 group-hover:text-blue-600 transition-colors">{member.user?.name || member.user?.email || 'غير معروف'}</p>
-                      <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${member.role === 'ADMIN' || member.role === 'OWNER' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-gray-50 text-gray-500 border-gray-100'}`}>
-                        {member.role === 'OWNER' ? 'مالك' : member.role === 'ADMIN' ? 'مدير نظام' : member.role === 'MANAGER' ? 'مدير فريق' : 'مندوب مبيعات'}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-4 mt-2">
-                      <span className="text-xs text-gray-400 font-bold flex items-center gap-1.5"><Mail size={12} className="text-blue-400" /> {member.user?.email || '-'}</span>
-                      <span className="text-gray-200">•</span>
-                      <span className="text-xs text-gray-400 font-bold flex items-center gap-1.5"><Clock size={12} className="text-blue-400" /> انضم: {new Date(member.createdAt).toLocaleDateString('ar-SA')}</span>
-                    </div>
-                  </div>
-                </div>
+                )}
 
-                <div className="flex items-center gap-8">
-                   <div className="hidden lg:flex flex-col text-left items-end">
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">أداء المبيعات</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs font-black text-gray-800">12 صفقات</span>
-                        <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                           <div className="h-full bg-green-500 w-[65%]"></div>
+                {/* Team Members */}
+                {filteredTeam.map((member) => (
+                  <div key={member.id} className="p-8 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50/50 transition-all group gap-6">
+                    <div className="flex items-center gap-6">
+                      <div className="relative">
+                        <div className="h-16 w-16 bg-white border border-gray-100 text-blue-600 rounded-[1.5rem] flex items-center justify-center font-black text-2xl shadow-sm group-hover:scale-110 transition-transform duration-500 ring-4 ring-transparent group-hover:ring-blue-50">
+                          {member.name?.[0] || member.email?.[0] || '?'}
+                        </div>
+                        <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-4 border-white shadow-md bg-green-500"></span>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-3">
+                          <p className="text-xl font-black text-gray-900 group-hover:text-blue-600 transition-colors">{member.name || member.email || 'غير معروف'}</p>
+                          <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${member.role === 'ADMIN' || member.role === 'OWNER' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-gray-50 text-gray-500 border-gray-100'}`}>
+                            {member.role === 'OWNER' ? 'مالك' : member.role === 'ADMIN' ? 'مدير نظام' : member.role === 'MANAGER' ? 'مدير فريق' : 'مندوب مبيعات'}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-4 mt-2">
+                          <span className="text-xs text-gray-400 font-bold flex items-center gap-1.5"><Mail size={12} className="text-blue-400" /> {member.email || '-'}</span>
+                          <span className="text-gray-200">•</span>
+                          <span className="text-xs text-gray-400 font-bold flex items-center gap-1.5"><Clock size={12} className="text-blue-400" /> انضم: {new Date(member.joinedAt || member.createdAt).toLocaleDateString('ar-SA')}</span>
                         </div>
                       </div>
-                   </div>
+                    </div>
 
-                   <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
-                    <button className="p-3 bg-white text-gray-400 hover:text-blue-600 rounded-xl shadow-sm border border-gray-100 transition-all hover:border-blue-200" title="تعديل الصلاحيات"><Shield size={20} /></button>
-                    <button className="p-3 bg-white text-gray-400 hover:text-orange-500 rounded-xl shadow-sm border border-gray-100 transition-all" title="سجل نشاط العضو"><Activity size={20} /></button>
-                    {member.role !== 'OWNER' && (
-                        <button 
-                        onClick={() => handleRemoveMember(member.userId)}
-                        className="p-3 bg-white text-red-400 hover:text-red-600 rounded-xl shadow-sm border border-gray-100 transition-all"
-                        >
-                        <Trash2 size={20} />
-                        </button>
-                    )}
-                    <button className="p-3 bg-white text-gray-400 hover:text-gray-900 rounded-xl shadow-sm border border-gray-100 transition-all"><MoreVertical size={20} /></button>
+                    <div className="flex items-center gap-8">
+                       <div className="hidden lg:flex flex-col text-left items-end">
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">الدور</p>
+                          <span className="text-xs font-black text-gray-800 mt-1">
+                            {member.role === 'OWNER' ? 'مالك' : member.role === 'ADMIN' ? 'مدير نظام' : member.role === 'MANAGER' ? 'مدير فريق' : 'مندوب مبيعات'}
+                          </span>
+                       </div>
+
+                       <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
+                        {member.role !== 'OWNER' && (
+                          <button 
+                            onClick={() => setShowRoleModal(member.id)}
+                            className="p-3 bg-white text-gray-400 hover:text-blue-600 rounded-xl shadow-sm border border-gray-100 transition-all hover:border-blue-200" 
+                            title="تعديل الصلاحيات"
+                          >
+                            <Shield size={20} />
+                          </button>
+                        )}
+                        <button className="p-3 bg-white text-gray-400 hover:text-orange-500 rounded-xl shadow-sm border border-gray-100 transition-all" title="سجل نشاط العضو"><Activity size={20} /></button>
+                        {member.role !== 'OWNER' && (
+                            <button 
+                            onClick={() => handleRemoveMember(member.id)}
+                            className="p-3 bg-white text-red-400 hover:text-red-600 rounded-xl shadow-sm border border-gray-100 transition-all"
+                            title="حذف العضو"
+                            >
+                            <Trash2 size={20} />
+                            </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                ))}
+              </>
+            )}
           </div>
         </div>
+
+        {/* Role Change Modal */}
+        {showRoleModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300 border border-gray-100">
+              <div className="p-6 border-b border-gray-50 flex items-center justify-between">
+                <h3 className="font-black text-xl text-gray-900">تغيير الصلاحيات</h3>
+                <button onClick={() => setShowRoleModal(null)} className="p-2 text-gray-400 hover:text-gray-600 rounded-xl"><X size={20} /></button>
+              </div>
+              <div className="p-6 space-y-3">
+                {['SALES', 'MANAGER', 'ADMIN'].map((role) => (
+                  <button
+                    key={role}
+                    onClick={() => handleUpdateRole(showRoleModal, role)}
+                    className={`w-full p-4 rounded-xl text-right font-bold transition-all border ${
+                      team.find(m => m.id === showRoleModal)?.role === role 
+                        ? 'bg-blue-50 border-blue-200 text-blue-600' 
+                        : 'bg-gray-50 border-gray-100 text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    {role === 'SALES' ? 'مندوب مبيعات' : role === 'MANAGER' ? 'مدير فريق' : 'مدير نظام'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Invite Modal */}
         {showInvite && (

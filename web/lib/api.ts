@@ -454,15 +454,12 @@ export async function getReportsCount(status?: string): Promise<{ count: number 
 
 export interface TeamMember {
   id: string;
-  userId: string;
+  email: string;
+  name: string;
+  avatarUrl?: string;
   role: 'OWNER' | 'ADMIN' | 'MANAGER' | 'SALES';
-  user: {
-    id: string;
-    email: string;
-    name: string;
-    avatarUrl?: string;
-    isActive: boolean;
-  };
+  membershipId: string;
+  joinedAt: string;
   createdAt: string;
 }
 
@@ -898,4 +895,391 @@ export async function exportDataBankLeads(params?: {
   
   const query = searchParams.toString();
   return apiRequest(`/admin/data-bank/export${query ? `?${query}` : ''}`);
+}
+
+// ==================== WhatsApp API ====================
+
+export interface WhatsAppTemplate {
+  id: string;
+  name: string;
+  content: string;
+  variables: string[];
+  category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface WhatsAppLog {
+  id: string;
+  phone: string;
+  message: string;
+  status: 'PENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+  whatsappUrl?: string;
+  createdAt: string;
+  sentAt?: string;
+  user?: { id: string; name: string };
+}
+
+export interface WhatsAppSendResult {
+  success: boolean;
+  messageId?: string;
+  whatsappUrl?: string;
+  error?: string;
+}
+
+export async function sendWhatsAppMessage(to: string, message: string, templateId?: string): Promise<WhatsAppSendResult> {
+  return apiRequest('/whatsapp/send', {
+    method: 'POST',
+    body: JSON.stringify({ to, message, templateId }),
+  });
+}
+
+export async function generateWhatsAppUrl(phone: string, message: string): Promise<{ webUrl: string; appUrl: string }> {
+  return apiRequest(`/whatsapp/generate-url?phone=${encodeURIComponent(phone)}&message=${encodeURIComponent(message)}`);
+}
+
+export async function getWhatsAppLogs(params?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  phone?: string;
+}): Promise<{ logs: WhatsAppLog[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.append('page', params.page.toString());
+  if (params?.limit) searchParams.append('limit', params.limit.toString());
+  if (params?.status) searchParams.append('status', params.status);
+  if (params?.phone) searchParams.append('phone', params.phone);
+  
+  const query = searchParams.toString();
+  return apiRequest(`/whatsapp/logs${query ? `?${query}` : ''}`);
+}
+
+export async function updateWhatsAppMessageStatus(messageId: string, status: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED'): Promise<WhatsAppLog> {
+  return apiRequest(`/whatsapp/logs/${messageId}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function getWhatsAppTemplates(): Promise<WhatsAppTemplate[]> {
+  return apiRequest('/whatsapp/templates');
+}
+
+export async function createWhatsAppTemplate(data: {
+  name: string;
+  content: string;
+  variables: string[];
+  category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+}): Promise<WhatsAppTemplate> {
+  return apiRequest('/whatsapp/templates', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateWhatsAppTemplate(id: string, data: Partial<{
+  name: string;
+  content: string;
+  variables: string[];
+  category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+}>): Promise<WhatsAppTemplate> {
+  return apiRequest(`/whatsapp/templates/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteWhatsAppTemplate(id: string): Promise<{ success: boolean }> {
+  return apiRequest(`/whatsapp/templates/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getWhatsAppDashboardStats(): Promise<{
+  totalMessages: number;
+  messagesToday: number;
+  messagesThisWeek: number;
+  byStatus: { status: string; count: number }[];
+  templatesCount: number;
+}> {
+  return apiRequest('/whatsapp/dashboard-stats');
+}
+
+// ==================== Password Reset API ====================
+
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  return apiRequest('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(token: string, password: string): Promise<{ message: string }> {
+  return apiRequest('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, password }),
+  });
+}
+
+export async function validateResetToken(token: string): Promise<{ valid: boolean; message?: string }> {
+  return apiRequest(`/auth/validate-reset-token?token=${token}`);
+}
+
+// ==================== WhatsApp Web (QR Code) API ====================
+
+export interface WhatsAppWebStatus {
+  status: 'disconnected' | 'qr_ready' | 'connecting' | 'connected' | 'failed' | 'initializing';
+  qrCode: string | null;
+  phoneNumber: string | null;
+  error: string | null;
+}
+
+export async function getWhatsAppWebStatus(): Promise<WhatsAppWebStatus> {
+  return apiRequest('/whatsapp/web/status');
+}
+
+export async function initializeWhatsAppWeb(): Promise<{ success: boolean; message: string }> {
+  return apiRequest('/whatsapp/web/initialize', {
+    method: 'POST',
+  });
+}
+
+export async function disconnectWhatsAppWeb(): Promise<{ success: boolean; message: string }> {
+  return apiRequest('/whatsapp/web/disconnect', {
+    method: 'POST',
+  });
+}
+
+export async function sendWhatsAppWebMessage(phone: string, message: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  return apiRequest('/whatsapp/web/send', {
+    method: 'POST',
+    body: JSON.stringify({ phone, message }),
+  });
+}
+
+// ==================== Local Analysis API (No AI Required) ====================
+
+export interface CompanyDataForAnalysis {
+  companyName: string;
+  industry?: string;
+  city?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  address?: string;
+  rating?: number;
+  reviewCount?: number;
+  socialLinks?: Record<string, string>;
+  socialProfiles?: Record<string, any>;
+  allEmails?: string[];
+  allPhones?: string[];
+  totalFollowers?: number;
+  strongestPlatform?: string;
+  dataCompleteness?: number;
+  dataSources?: {
+    googleMaps?: boolean;
+    googleSearch?: boolean;
+    website?: boolean;
+    websitePages?: number;
+    socialMedia?: boolean;
+    socialPlatforms?: string[];
+  };
+  description?: string;
+  metadata?: any;
+}
+
+export interface LocalAnalysisResult {
+  executiveSummary: {
+    points: string[];
+    confidenceLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  };
+  digitalPresenceScore: number;
+  gaps: {
+    category: string;
+    status: 'GOOD' | 'NEEDS_IMPROVEMENT' | 'MISSING';
+    recommendation: string;
+  }[];
+  recommendedServices: {
+    service: string;
+    priority: 'HIGH' | 'MEDIUM' | 'LOW';
+    reason: string;
+  }[];
+  salesTips: string[];
+  qualificationScore: number;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+}
+
+/**
+ * تحليل محلي سريع للشركة (بدون AI - نتائج فورية)
+ */
+export async function analyzeCompanyLocal(data: CompanyDataForAnalysis): Promise<LocalAnalysisResult> {
+  return apiRequest('/survey/analyze-local', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * التحقق من صحة اسم الشركة قبل التحليل
+ */
+export async function validateCompanyName(name: string): Promise<{ valid: boolean; reason?: string }> {
+  return apiRequest('/survey/validate-name', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+}
+
+// ==================== Deep Search API (Extension Integration) ====================
+
+export interface DeepSearchResult {
+  success: boolean;
+  companyName: string;
+  sources: string[];
+  data: {
+    basic: CompanyDataForAnalysis;
+    googleMaps?: {
+      name?: string;
+      phone?: string;
+      website?: string;
+      address?: string;
+      rating?: string;
+      reviews?: string;
+      category?: string;
+      links?: Record<string, string>;
+    };
+    googleSearch?: {
+      officialWebsite?: string;
+      socialLinks?: Record<string, string>;
+      knowledgePanel?: {
+        title?: string;
+        description?: string;
+      };
+    };
+    socialProfiles?: Record<string, {
+      platform: string;
+      url: string;
+      username?: string;
+      displayName?: string;
+      bio?: string;
+      followers?: string;
+      following?: string;
+      posts?: string;
+      likes?: string;
+      isVerified?: boolean;
+    }>;
+  };
+  summary?: {
+    hasGoogleMaps: boolean;
+    hasWebsite: boolean;
+    socialPlatforms: string[];
+    totalFollowers: number;
+    isVerifiedAnywhere: boolean;
+    contactInfo: {
+      phone?: string;
+      email?: string;
+      website?: string;
+      address?: string;
+    };
+    rating?: string;
+    reviews?: string;
+  };
+  searchTime: number;
+  error?: string;
+}
+
+/**
+ * تحليل شامل مع بيانات البحث العميق من الإكستنشن
+ */
+export async function analyzeDeep(
+  companyData: CompanyDataForAnalysis,
+  deepSearchResult?: DeepSearchResult
+): Promise<LocalAnalysisResult> {
+  return apiRequest('/survey/analyze-deep', {
+    method: 'POST',
+    body: JSON.stringify({ companyData, deepSearchResult }),
+  });
+}
+
+/**
+ * طلب بحث شامل من الإكستنشن
+ * ملاحظة: هذه الوظيفة تعمل فقط من داخل الإكستنشن أو Content Script
+ * من الويب العادي، استخدم التحليل المحلي فقط
+ */
+export async function requestDeepSearch(_companyData: CompanyDataForAnalysis): Promise<DeepSearchResult | null> {
+  // البحث الشامل يتم من داخل الإكستنشن فقط
+  // الويب يستخدم التحليل المحلي
+  console.log('[Leedz] Deep search is only available from extension');
+  return null;
+}
+
+/**
+ * التحقق من اتصال الإكستنشن
+ * يتم عبر فحص وجود عنصر مُحقن من Content Script
+ */
+export async function checkExtensionConnection(): Promise<boolean> {
+  // فحص وجود الإكستنشن عبر عنصر DOM مُحقن
+  if (typeof document !== 'undefined') {
+    const extensionMarker = document.getElementById('leedz-extension-marker');
+    return !!extensionMarker;
+  }
+  return false;
+}
+
+// ==================== Formatted Report (AI-powered, no search) ====================
+
+/**
+ * نتيجة التقرير المُنسق بالـ AI
+ */
+export interface FormattedReport {
+  executiveSummary: {
+    headline: string;
+    points: string[];
+    overallScore: number;
+  };
+  digitalPresence: {
+    score: number;
+    breakdown: {
+      category: string;
+      status: 'excellent' | 'good' | 'needs_work' | 'missing';
+      details: string;
+    }[];
+  };
+  socialMedia: {
+    platforms: {
+      name: string;
+      url: string;
+      followers?: string;
+      status: string;
+      recommendation?: string;
+    }[];
+    totalFollowers: number;
+    strongestPlatform?: string;
+  };
+  opportunities: {
+    title: string;
+    priority: 'high' | 'medium' | 'low';
+    description: string;
+    suggestedService?: string;
+  }[];
+  salesTips: string[];
+  contactInfo: {
+    phone?: string;
+    email?: string;
+    website?: string;
+    address?: string;
+  };
+  tokensUsed: number;
+  formattedAt: string;
+}
+
+/**
+ * تنسيق التقرير باستخدام AI بناءً على بيانات البحث من الإكستنشن
+ * لا يقوم بأي بحث - فقط تنسيق البيانات المُقدمة
+ * يستهلك ~500 توكن فقط بدلاً من ~5000
+ */
+export async function formatReport(searchData: DeepSearchResult): Promise<FormattedReport> {
+  return apiRequest('/survey/format-report', {
+    method: 'POST',
+    body: JSON.stringify(searchData),
+  });
 }

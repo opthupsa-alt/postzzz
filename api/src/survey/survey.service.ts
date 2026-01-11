@@ -915,7 +915,151 @@ export class SurveyService {
       throw new NotFoundException('Report not found');
     }
 
-    return report;
+    // دمج بيانات الـ Lead مع التقرير لضمان عرض البيانات الفعلية
+    return this.enrichReportWithLeadData(report);
+  }
+
+  /**
+   * دمج بيانات الـ Lead الفعلية مع التقرير
+   */
+  private enrichReportWithLeadData(report: any): any {
+    const lead = report.lead;
+    if (!lead) return report;
+
+    const metadata = lead.metadata || {};
+    const enriched = { ...report };
+    const socialLinks = metadata.socialLinks || {};
+    const socialProfiles = metadata.socialProfiles || {};
+
+    // ==================== إثراء Digital Footprint ====================
+    if (enriched.digitalFootprint) {
+      enriched.digitalFootprint = enriched.digitalFootprint.map((item: any) => {
+        const platformKey = item.platform?.toLowerCase();
+        
+        if (socialLinks[platformKey] && !item.url) {
+          item.url = socialLinks[platformKey];
+          item.status = 'EXISTS';
+        }
+        
+        if (socialProfiles[platformKey]) {
+          const profile = socialProfiles[platformKey];
+          item.followers = profile.followers ? this.parseFollowerCount(String(profile.followers)) : item.followers;
+          item.isVerified = profile.isVerified || item.isVerified;
+          item.details = profile.bio || profile.about || item.details;
+          if (profile.url) item.url = profile.url;
+          item.status = 'EXISTS';
+        }
+        
+        if (platformKey === 'website' && lead.website) {
+          item.url = lead.website;
+          item.status = 'EXISTS';
+        }
+        
+        if (platformKey === 'google_maps' && metadata.googleMapsUrl) {
+          item.url = metadata.googleMapsUrl;
+          item.status = 'EXISTS';
+          item.rating = lead.rating;
+          item.reviewCount = metadata.reviewCount;
+        }
+        
+        return item;
+      });
+    }
+
+    // ==================== إثراء CRM Card ====================
+    if (enriched.crmCard) {
+      enriched.crmCard = {
+        ...enriched.crmCard,
+        companyName: enriched.crmCard.companyName || lead.companyName,
+        industry: enriched.crmCard.industry || lead.industry,
+        city: enriched.crmCard.city || lead.city,
+        phone: enriched.crmCard.phone || lead.phone,
+        email: enriched.crmCard.email || lead.email || metadata.email || metadata.allEmails?.[0],
+        website: enriched.crmCard.website || lead.website,
+        socialLinks: { ...(enriched.crmCard.socialLinks || {}), ...socialLinks },
+      };
+    }
+
+    // ==================== إثراء Identity Anchors ====================
+    if (enriched.identityAnchors) {
+      const confirmedIdentifiers = [...(enriched.identityAnchors.confirmedIdentifiers || [])];
+      
+      if (lead.phone && !confirmedIdentifiers.some((i: any) => i.type === 'phone')) {
+        confirmedIdentifiers.push({ type: 'phone', value: lead.phone, source: 'Extension Search', verified: true });
+      }
+      
+      const email = lead.email || metadata.email || metadata.allEmails?.[0];
+      if (email && !confirmedIdentifiers.some((i: any) => i.type === 'email')) {
+        confirmedIdentifiers.push({ type: 'email', value: email, source: 'Website Scraping', verified: true });
+      }
+      
+      if (lead.website && !confirmedIdentifiers.some((i: any) => i.type === 'website')) {
+        confirmedIdentifiers.push({ type: 'website', value: lead.website, source: 'Extension Search', verified: true });
+      }
+      
+      enriched.identityAnchors.confirmedIdentifiers = confirmedIdentifiers;
+    }
+
+    // ==================== إثراء Gap Analysis ====================
+    if (enriched.gapAnalysis) {
+      enriched.gapAnalysis = enriched.gapAnalysis.map((gap: any) => {
+        const category = gap.category?.toLowerCase() || '';
+        
+        if (category.includes('موقع') || category.includes('website')) {
+          if (lead.website) {
+            gap.status = 'GOOD';
+            gap.findings = [`الموقع موجود: ${lead.website}`];
+            gap.recommendations = ['تحسين سرعة الموقع وتجربة المستخدم'];
+          } else {
+            gap.status = 'MISSING';
+            gap.findings = ['لا يوجد موقع إلكتروني'];
+            gap.recommendations = ['إنشاء موقع إلكتروني احترافي'];
+          }
+        }
+        
+        if (category.includes('سوشيال') || category.includes('social')) {
+          const socialCount = Object.keys(socialLinks).length + Object.keys(socialProfiles).length;
+          if (socialCount > 0) {
+            gap.status = socialCount >= 3 ? 'GOOD' : 'NEEDS_IMPROVEMENT';
+            gap.findings = [`موجود على ${socialCount} منصات: ${[...Object.keys(socialLinks), ...Object.keys(socialProfiles)].join(', ')}`];
+            gap.recommendations = socialCount < 3 ? ['التوسع في منصات إضافية'] : ['تحسين المحتوى وزيادة التفاعل'];
+          } else {
+            gap.status = 'MISSING';
+            gap.findings = ['لا توجد حسابات سوشيال ميديا'];
+            gap.recommendations = ['إنشاء حسابات على المنصات الرئيسية'];
+          }
+        }
+        
+        return gap;
+      });
+    }
+
+    // ==================== إضافة ملخص السوشيال ميديا ====================
+    if (Object.keys(socialProfiles).length > 0) {
+      let totalFollowers = 0;
+      let verifiedCount = 0;
+      
+      for (const profile of Object.values(socialProfiles) as any[]) {
+        if (profile.followers) totalFollowers += this.parseFollowerCount(String(profile.followers)) || 0;
+        if (profile.isVerified) verifiedCount++;
+      }
+      
+      enriched.lead = {
+        ...enriched.lead,
+        metadata: {
+          ...metadata,
+          socialSummary: {
+            totalPlatforms: Object.keys(socialProfiles).length,
+            activePlatforms: Object.keys(socialProfiles).length,
+            totalFollowers,
+            verifiedAccounts: verifiedCount,
+            overallScore: Math.min(100, 50 + Object.keys(socialProfiles).length * 10 + (totalFollowers > 10000 ? 20 : 0)),
+          },
+        },
+      };
+    }
+
+    return enriched;
   }
 
   /**

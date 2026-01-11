@@ -2,21 +2,32 @@
 import React, { useState } from 'react';
 import { Zap, Mail, ArrowRight, Loader2, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
+import { apiRequest } from '../lib/api';
 
 const ForgotPasswordPage: React.FC = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSent, setIsSent] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate sending reset link
-    setTimeout(() => {
-      setIsLoading(false);
+    setError('');
+
+    try {
+      await apiRequest('/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
       setIsSent(true);
-    }, 1500);
+    } catch (err: any) {
+      // Always show success to prevent email enumeration
+      setIsSent(true);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

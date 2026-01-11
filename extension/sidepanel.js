@@ -145,11 +145,18 @@ function showActiveJob(job) {
   if (jobType) jobType.textContent = typeLabels[job.type] || job.type;
   if (jobProgress) jobProgress.textContent = job.status === 'RUNNING' ? 'جاري التنفيذ...' : job.status;
   if (jobProgressBar) jobProgressBar.style.width = `${job.progress || 0}%`;
+  
+  // إظهار زر الإيقاف
+  const stopBtn = document.getElementById('stopSearchBtn');
+  if (stopBtn) stopBtn.style.display = 'flex';
 }
 
 function hideActiveJob() {
   currentJob = null;
   if (activeJobSection) activeJobSection.style.display = 'none';
+  // إخفاء زر الإيقاف
+  const stopBtn = document.getElementById('stopSearchBtn');
+  if (stopBtn) stopBtn.style.display = 'none';
 }
 
 function showResults(results, searchType = null) {
@@ -547,9 +554,305 @@ logoutBtn.addEventListener('click', handleLogout);
 autoLoginBtn?.addEventListener('click', handleAutoLogin);
 openPlatformBtn?.addEventListener('click', handleOpenPlatform);
 
+// Test Deep Search button
+const testDeepSearchBtn = document.getElementById('testDeepSearchBtn');
+testDeepSearchBtn?.addEventListener('click', handleTestDeepSearch);
+
+// ==================== Deep Search Test ====================
+
+async function handleTestDeepSearch() {
+  const companyName = prompt('أدخل اسم الشركة للبحث:', 'مطعم البيك');
+  if (!companyName) return;
+  
+  const city = prompt('أدخل المدينة (اختياري):', 'الرياض');
+  
+  const deepReportSection = document.getElementById('deepReportSection');
+  const deepReportContainer = document.getElementById('deepReportContainer');
+  
+  if (!deepReportSection || !deepReportContainer) return;
+  
+  deepReportSection.style.display = 'block';
+  deepReportContainer.innerHTML = `
+    <div style="text-align: center; padding: 20px;">
+      <div class="spinner" style="margin: 0 auto 12px; border-color: #3b82f6; border-top-color: #1d4ed8;"></div>
+      <p style="color: #64748b; font-size: 13px;">جاري البحث الشامل...</p>
+      <p id="deepSearchStatus" style="color: #3b82f6; font-size: 12px; margin-top: 8px;">بدء البحث...</p>
+    </div>
+  `;
+  
+  updateExtensionStatus('busy', 'جاري البحث الشامل...');
+  
+  try {
+    // تنفيذ البحث الشامل
+    const searchResult = await sendMessage({
+      type: 'DEEP_SEARCH',
+      companyData: {
+        companyName,
+        city: city || undefined,
+      }
+    });
+    
+    console.log('[Leedz] Deep search result:', searchResult);
+    
+    if (!searchResult || !searchResult.success) {
+      throw new Error(searchResult?.error || 'فشل البحث');
+    }
+    
+    // تحديث الحالة
+    document.getElementById('deepSearchStatus').textContent = 'جاري تنسيق التقرير بالذكاء الاصطناعي...';
+    
+    // إرسال للـ API لتنسيق التقرير
+    const authState = await sendMessage({ type: 'GET_AUTH_STATE' });
+    const token = authState?.token;
+    
+    if (!token) {
+      throw new Error('يجب تسجيل الدخول أولاً');
+    }
+    
+    const formatResponse = await fetch(`${CONFIG.API_URL}/survey/format-report`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(searchResult),
+    });
+    
+    if (!formatResponse.ok) {
+      const errorText = await formatResponse.text();
+      throw new Error(`API Error: ${formatResponse.status} - ${errorText}`);
+    }
+    
+    const formattedReport = await formatResponse.json();
+    console.log('[Leedz] Formatted report:', formattedReport);
+    
+    // عرض النتيجة
+    displayFormattedReport(deepReportContainer, formattedReport, searchResult);
+    updateExtensionStatus('ready', 'اكتمل التقرير');
+    
+  } catch (error) {
+    console.error('[Leedz] Deep search error:', error);
+    deepReportContainer.innerHTML = `
+      <div style="text-align: center; padding: 20px; color: #dc2626;">
+        <div style="font-size: 32px; margin-bottom: 12px;">❌</div>
+        <p style="font-weight: bold;">حدث خطأ</p>
+        <p style="font-size: 12px; margin-top: 8px;">${error.message}</p>
+        <button onclick="document.getElementById('testDeepSearchBtn').click()" 
+                style="margin-top: 16px; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer;">
+          🔄 إعادة المحاولة
+        </button>
+      </div>
+    `;
+    updateExtensionStatus('error', 'فشل البحث');
+  }
+}
+
+function displayFormattedReport(container, report, searchResult) {
+  const r = report;
+  const sources = searchResult.sources || [];
+  
+  container.innerHTML = `
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 16px; color: white; margin-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 60px; height: 60px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <span style="font-size: 24px; font-weight: bold;">${r.executiveSummary?.overallScore || 0}</span>
+          <span style="font-size: 10px;">%</span>
+        </div>
+        <div>
+          <h4 style="margin: 0; font-size: 14px;">${r.executiveSummary?.headline || 'تقرير'}</h4>
+          <p style="margin: 4px 0 0; font-size: 11px; opacity: 0.8;">المصادر: ${sources.join(', ') || 'لا يوجد'}</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Summary Points -->
+    <div style="margin-bottom: 16px;">
+      <h5 style="font-size: 12px; color: #64748b; margin-bottom: 8px;">📋 ملخص</h5>
+      <ul style="margin: 0; padding: 0; list-style: none;">
+        ${(r.executiveSummary?.points || []).map(p => `
+          <li style="padding: 6px 0; padding-right: 16px; position: relative; font-size: 13px; color: #475569;">
+            <span style="position: absolute; right: 0; color: #22c55e;">✓</span>
+            ${p}
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+    
+    <!-- Digital Presence -->
+    <div style="margin-bottom: 16px;">
+      <h5 style="font-size: 12px; color: #64748b; margin-bottom: 8px;">🌐 الحضور الرقمي</h5>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        ${(r.digitalPresence?.breakdown || []).map(item => `
+          <div style="display: flex; justify-content: space-between; padding: 8px 10px; background: ${getStatusBg(item.status)}; border-radius: 6px; font-size: 12px;">
+            <span>${item.category}</span>
+            <span>${getStatusLabel(item.status)}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    
+    <!-- Social Media -->
+    ${r.socialMedia?.platforms?.length > 0 ? `
+      <div style="margin-bottom: 16px;">
+        <h5 style="font-size: 12px; color: #64748b; margin-bottom: 8px;">📱 السوشيال ميديا</h5>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          ${r.socialMedia.platforms.map(p => `
+            <a href="${p.url}" target="_blank" style="padding: 6px 10px; background: #f1f5f9; border-radius: 16px; text-decoration: none; color: #475569; font-size: 11px;">
+              ${p.name} ${p.followers ? `(${p.followers})` : ''}
+            </a>
+          `).join('')}
+        </div>
+        ${r.socialMedia.totalFollowers > 0 ? `
+          <p style="font-size: 11px; color: #64748b; margin-top: 8px;">إجمالي المتابعين: ${r.socialMedia.totalFollowers.toLocaleString()}</p>
+        ` : ''}
+      </div>
+    ` : ''}
+    
+    <!-- Opportunities -->
+    <div style="margin-bottom: 16px;">
+      <h5 style="font-size: 12px; color: #64748b; margin-bottom: 8px;">💡 الفرص</h5>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        ${(r.opportunities || []).map(opp => `
+          <div style="padding: 10px; background: #f9fafb; border-radius: 8px; border-right: 3px solid ${getPriorityColor(opp.priority)};">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span style="font-weight: 600; font-size: 12px;">${opp.title}</span>
+              <span style="font-size: 10px;">${getPriorityLabel(opp.priority)}</span>
+            </div>
+            <p style="margin: 0; font-size: 11px; color: #64748b;">${opp.description}</p>
+            ${opp.suggestedService ? `<span style="display: inline-block; margin-top: 6px; padding: 3px 8px; background: #667eea; color: white; border-radius: 10px; font-size: 10px;">💼 ${opp.suggestedService}</span>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    
+    <!-- Opening Script -->
+    ${r.openingScript ? `
+      <div style="margin-bottom: 16px;">
+        <h5 style="font-size: 12px; color: #64748b; margin-bottom: 8px;">📝 سكريبت الافتتاح</h5>
+        <div style="padding: 12px; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px; border-right: 3px solid #22c55e;">
+          <p style="margin: 0; font-size: 12px; color: #166534; line-height: 1.6;">"${r.openingScript}"</p>
+        </div>
+      </div>
+    ` : ''}
+    
+    <!-- Qualifying Questions -->
+    ${r.qualifyingQuestions?.length > 0 ? `
+      <div style="margin-bottom: 16px;">
+        <h5 style="font-size: 12px; color: #64748b; margin-bottom: 8px;">❓ أسئلة التأهيل</h5>
+        <ul style="margin: 0; padding: 0; list-style: none;">
+          ${r.qualifyingQuestions.map(q => `
+            <li style="padding: 8px 10px; margin-bottom: 4px; background: #fef3c7; border-radius: 6px; font-size: 12px; color: #92400e;">
+              ${q}
+            </li>
+          `).join('')}
+        </ul>
+      </div>
+    ` : ''}
+    
+    <!-- Sales Tips -->
+    <div style="margin-bottom: 16px;">
+      <h5 style="font-size: 12px; color: #64748b; margin-bottom: 8px;">🎯 نصائح للمبيعات</h5>
+      <ul style="margin: 0; padding: 0; list-style: none;">
+        ${(r.salesTips || []).map((tip, i) => `
+          <li style="display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; font-size: 12px; color: #475569;">
+            <span style="width: 20px; height: 20px; background: #667eea; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0;">${i + 1}</span>
+            ${tip}
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+    
+    <!-- Contact Info -->
+    ${r.contactInfo?.phone || r.contactInfo?.website ? `
+      <div style="padding: 12px; background: #f1f5f9; border-radius: 8px; margin-bottom: 16px;">
+        <h5 style="font-size: 12px; color: #64748b; margin-bottom: 8px;">📞 معلومات الاتصال</h5>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          ${r.contactInfo.phone ? `<a href="tel:${r.contactInfo.phone}" style="padding: 6px 10px; background: white; border-radius: 6px; text-decoration: none; color: #475569; font-size: 11px;">📱 ${r.contactInfo.phone}</a>` : ''}
+          ${r.contactInfo.website ? `<a href="${r.contactInfo.website}" target="_blank" style="padding: 6px 10px; background: white; border-radius: 6px; text-decoration: none; color: #475569; font-size: 11px;">🌐 الموقع</a>` : ''}
+        </div>
+        ${r.contactInfo.address ? `<p style="margin: 8px 0 0; font-size: 11px; color: #64748b;">📍 ${r.contactInfo.address}</p>` : ''}
+      </div>
+    ` : ''}
+    
+    <!-- Footer -->
+    <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+      <span style="font-size: 10px; color: #94a3b8;">🪙 ${r.tokensUsed || 0} توكن</span>
+      <button onclick="document.getElementById('testDeepSearchBtn').click()" 
+              style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 6px; font-size: 11px; cursor: pointer;">
+        🔄 تقرير جديد
+      </button>
+    </div>
+  `;
+}
+
+function getStatusBg(status) {
+  const colors = {
+    excellent: '#dcfce7',
+    good: '#dbeafe',
+    needs_work: '#fef3c7',
+    missing: '#fee2e2',
+  };
+  return colors[status] || '#f1f5f9';
+}
+
+function getStatusLabel(status) {
+  const labels = {
+    excellent: '✅ ممتاز',
+    good: '👍 جيد',
+    needs_work: '⚠️ يحتاج تحسين',
+    missing: '❌ غائب',
+  };
+  return labels[status] || status;
+}
+
+function getPriorityColor(priority) {
+  const colors = {
+    high: '#ef4444',
+    medium: '#f59e0b',
+    low: '#22c55e',
+  };
+  return colors[priority] || '#94a3b8';
+}
+
+function getPriorityLabel(priority) {
+  const labels = {
+    high: '🔴 عالية',
+    medium: '🟡 متوسطة',
+    low: '🟢 منخفضة',
+  };
+  return labels[priority] || priority;
+}
+
 // Settings button
 document.getElementById('settingsBtn')?.addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
+});
+
+// Stop Search button - زر إيقاف البحث
+document.getElementById('stopSearchBtn')?.addEventListener('click', async () => {
+  console.log('[Leedz] User clicked stop search');
+  const stopBtn = document.getElementById('stopSearchBtn');
+  if (stopBtn) {
+    stopBtn.disabled = true;
+    stopBtn.innerHTML = '⏳ جاري الإيقاف...';
+  }
+  
+  try {
+    const response = await sendMessage({ type: 'STOP_SEARCH' });
+    console.log('[Leedz] Stop search response:', response);
+    
+    if (response?.success) {
+      hideActiveJob();
+      updateExtensionStatus('ready', 'تم إيقاف البحث');
+    }
+  } catch (error) {
+    console.error('[Leedz] Stop search error:', error);
+  } finally {
+    if (stopBtn) {
+      stopBtn.disabled = false;
+      stopBtn.innerHTML = '⏹️ إيقاف البحث';
+    }
+  }
 });
 
 // Listen for messages from background

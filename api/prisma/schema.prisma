@@ -34,6 +34,8 @@ model Tenant {
   users         User[]
   surveyUsage   SurveyUsage[]
   searchHistory SearchHistory[]
+  whatsappTemplates WhatsAppTemplate[]
+  whatsappLogs  WhatsAppLog[]
 
   @@map("tenants")
 }
@@ -60,6 +62,8 @@ model User {
   extensionSettings ExtensionSettings?
   surveyUsage     SurveyUsage[]
   searchHistory   SearchHistory[]
+  passwordResets  PasswordReset[]
+  whatsappLogs    WhatsAppLog[]
 
   @@map("users")
 }
@@ -559,6 +563,23 @@ model SurveyUsage {
   @@map("survey_usage")
 }
 
+// ==================== Password Reset ====================
+
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([token])
+  @@index([userId])
+  @@map("password_resets")
+}
+
 // ==================== Search History ====================
 
 enum SearchType {
@@ -607,5 +628,48 @@ model SearchHistory {
   @@index([userId, createdAt])
   @@index([tenantId, query])
   @@map("search_history")
+}
+
+// ==================== WhatsApp ====================
+
+model WhatsAppTemplate {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  content   String   @db.Text
+  variables String[] @default([])
+  category  String   @default("UTILITY") // MARKETING, UTILITY, AUTHENTICATION
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("whatsapp_templates")
+}
+
+model WhatsAppLog {
+  id             String    @id @default(uuid())
+  tenantId       String
+  userId         String
+  phone          String
+  message        String    @db.Text
+  templateId     String?
+  status         String    @default("PENDING") // PENDING, SENT, DELIVERED, READ, FAILED
+  connectionType String    @default("URL") // URL, WEB, META_API
+  whatsappUrl    String?   @db.Text
+  errorMessage   String?
+  sentAt         DateTime?
+  createdAt      DateTime  @default(now())
+  
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id])
+  
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@index([phone])
+  @@map("whatsapp_logs")
 }
 

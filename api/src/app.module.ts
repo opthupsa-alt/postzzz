@@ -21,6 +21,7 @@ import { ExtensionSettingsModule } from './extension-settings/extension-settings
 import { AIProviderModule } from './ai-provider/ai-provider.module';
 import { SurveyModule } from './survey/survey.module';
 import { SearchHistoryModule } from './search-history/search-history.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { SearchHistoryModule } from './search-history/search-history.module';
     AIProviderModule,
     SurveyModule,
     SearchHistoryModule,
+    WhatsAppModule,
   ],
 })
 export class AppModule {}

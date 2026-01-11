@@ -40,7 +40,9 @@ import { showToast } from '../components/NotificationToast';
 import SurveyButton from '../components/survey/SurveyButton';
 import SurveyProgress from '../components/survey/SurveyProgress';
 import SurveyReportViewer from '../components/survey/SurveyReportViewer';
-import { apiRequest } from '../lib/api';
+import QuickAnalysis from '../components/QuickAnalysis';
+import EnhancedLeadCard from '../components/EnhancedLeadCard';
+import { apiRequest, CompanyDataForAnalysis, getLead as fetchLead, Lead as ApiLead } from '../lib/api';
 
 const LeadDetailPage: React.FC = () => {
   const { id } = useParams();
@@ -67,16 +69,56 @@ const LeadDetailPage: React.FC = () => {
   const [surveyReportId, setSurveyReportId] = useState<string | null>(null);
   const [surveyStatus, setSurveyStatus] = useState<'PENDING' | 'GENERATING' | 'COMPLETED' | 'FAILED' | null>(null);
   const [surveyReport, setSurveyReport] = useState<any>(null);
-  
-  const lead = leads.find(l => l.id === id) || savedLeads.find(l => l.id === id);
+  const [lead, setLead] = useState<ApiLead | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // جلب بيانات العميل من API
   useEffect(() => {
-    if (!lead && (leads.length > 0 || savedLeads.length > 0)) {
-      navigate('/app/leads');
-    }
-  }, [lead, leads, savedLeads, navigate]);
+    const loadLead = async () => {
+      if (!id) {
+        navigate('/app/leads');
+        return;
+      }
+      
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        // أولاً نحاول من الـ store
+        const storeLead = leads.find(l => l.id === id) || savedLeads.find(l => l.id === id);
+        if (storeLead) {
+          setLead(storeLead as any);
+          setIsLoading(false);
+          return;
+        }
+        
+        // إذا لم نجده في الـ store، نجلبه من API
+        const apiLead = await fetchLead(id);
+        setLead(apiLead);
+      } catch (err: any) {
+        console.error('Error fetching lead:', err);
+        setError(err.message || 'فشل في جلب بيانات العميل');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadLead();
+  }, [id, leads, savedLeads, navigate]);
 
-  if (!lead) return <div className="p-20 text-center text-gray-400">جاري تحميل البيانات...</div>;
+  if (isLoading) return <div className="p-20 text-center text-gray-400">جاري تحميل البيانات...</div>;
+  
+  if (error) return (
+    <div className="p-20 text-center">
+      <p className="text-red-500 font-bold mb-4">{error}</p>
+      <button onClick={() => navigate('/app/leads')} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold">
+        العودة للقائمة
+      </button>
+    </div>
+  );
+  
+  if (!lead) return <div className="p-20 text-center text-gray-400">العميل غير موجود</div>;
 
   const leadEvidence = evidence[lead.id] || [];
   const leadReport = reports[lead.id];
@@ -370,7 +412,53 @@ const LeadDetailPage: React.FC = () => {
 
             <div className="p-10 flex-1">
               {activeTab === 'overview' && (
-                <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  {/* ========== البيانات الموسعة - تظهر مباشرة بدون AI ========== */}
+                  <EnhancedLeadCard lead={{
+                    id: lead.id,
+                    companyName: lead.companyName,
+                    industry: lead.industry,
+                    city: lead.city,
+                    phone: lead.phone,
+                    email: (lead as any).email,
+                    website: lead.website,
+                    address: lead.address,
+                    metadata: lead.metadata as any,
+                  }} />
+                  
+                  {/* ========== التحليل السريع (AI للملخص فقط) - يستخدم جميع البيانات المستخرجة ========== */}
+                  <QuickAnalysis 
+                    companyData={{
+                      companyName: lead.companyName,
+                      industry: lead.industry,
+                      city: lead.city,
+                      phone: lead.phone || (lead.metadata as any)?.allPhones?.[0],
+                      email: (lead as any).email || (lead.metadata as any)?.allEmails?.[0],
+                      website: lead.website,
+                      address: lead.address,
+                      rating: lead.metadata?.rating ? parseFloat(lead.metadata.rating) : undefined,
+                      reviewCount: lead.metadata?.reviews ? parseInt(lead.metadata.reviews) : undefined,
+                      socialLinks: (lead.metadata as any)?.socialLinks,
+                      metadata: {
+                        ...lead.metadata,
+                        // تمرير جميع البيانات المستخرجة للتحليل
+                        socialProfiles: (lead.metadata as any)?.socialProfiles,
+                        allEmails: (lead.metadata as any)?.allEmails,
+                        allPhones: (lead.metadata as any)?.allPhones,
+                        totalFollowers: (lead.metadata as any)?.totalFollowers,
+                        strongestPlatform: (lead.metadata as any)?.strongestPlatform,
+                        dataCompleteness: (lead.metadata as any)?.dataCompleteness,
+                        dataSources: (lead.metadata as any)?.dataSources,
+                        description: (lead.metadata as any)?.description,
+                        services: (lead.metadata as any)?.services,
+                        workingHours: (lead.metadata as any)?.workingHours,
+                        latestSocialActivity: (lead.metadata as any)?.latestSocialActivity,
+                        totalSocialPosts: (lead.metadata as any)?.totalSocialPosts,
+                      },
+                    }}
+                  />
+                  
+                  {/* ========== رؤية المبيعات ========== */}
                   <div className="flex items-start gap-6 p-8 bg-blue-50/50 border border-blue-100 rounded-[2rem] relative overflow-hidden group">
                     <div className="p-4 bg-white rounded-2xl text-blue-600 shadow-xl z-10"><Info size={32} /></div>
                     <div className="z-10">
@@ -382,6 +470,7 @@ const LeadDetailPage: React.FC = () => {
                     </div>
                   </div>
                   
+                  {/* ========== معلومات إضافية ========== */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     <div className="p-8 bg-gray-50/50 border border-gray-100 rounded-[2rem] space-y-3 hover:border-blue-200 transition-colors">
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">تاريخ الاكتشاف</p>
@@ -397,6 +486,7 @@ const LeadDetailPage: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* ========== الفرص المقترحة ========== */}
                   <div className="pt-8 border-t border-gray-50 space-y-6">
                     <h3 className="text-2xl font-black text-gray-900 flex items-center gap-3">
                       <Sparkles size={24} className="text-blue-600" /> الفرص المقترحة

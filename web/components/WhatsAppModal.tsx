@@ -1,9 +1,10 @@
 
-import React, { useState } from 'react';
-import { X, MessageSquare, Send, CheckCircle2, Copy, Info, Sparkles, Wand2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, MessageSquare, Send, CheckCircle2, Copy, Info, Sparkles, Wand2, Edit3, Phone } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { JobStatus } from '../types';
 import { useParams } from 'react-router-dom';
+import { sendWhatsAppWebMessage } from '../lib/api';
 
 interface WhatsAppModalProps {
   isOpen: boolean;
@@ -12,13 +13,26 @@ interface WhatsAppModalProps {
   phone?: string;
 }
 
-const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ isOpen, onClose, leadName, phone }) => {
+const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ isOpen, onClose, leadName, phone: initialPhone }) => {
   const { id: leadId } = useParams();
-  const { addJob, updateJob, addActivity, templates, reports } = useStore();
-  const [message, setMessage] = useState(`مرحباً فريق ${leadName}،\n\nنحن مهتمون بالتعاون معكم في مجال الحلول التقنية. هل لديكم وقت لمكالمة سريعة؟`);
+  const { addJob, updateJob, addActivity, templates, reports, connectedPhone } = useStore();
+  const [message, setMessage] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState(initialPhone || '');
+  const [isEditingPhone, setIsEditingPhone] = useState(false);
   const [sending, setSending] = useState(false);
   const [success, setSuccess] = useState(false);
   const [isAiFilling, setIsAiFilling] = useState(false);
+
+  // تحديث رقم المرسل إليه والرسالة عند تغيير الـ props
+  useEffect(() => {
+    if (initialPhone) {
+      setRecipientPhone(initialPhone);
+    }
+    // تحديث الرسالة الافتراضية مع اسم العميل
+    if (leadName) {
+      setMessage(`مرحباً فريق،\n${leadName}\n\nنحن مهتمون بالتعاون معكم في مجال الحلول التقنية. هل لديكم وقت لمكالمة سريعة؟`);
+    }
+  }, [initialPhone, leadName]);
 
   if (!isOpen) return null;
 
@@ -35,7 +49,17 @@ const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ isOpen, onClose, leadName
     }, 1000);
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
+    if (!recipientPhone) {
+      alert('يرجى إدخال رقم المرسل إليه');
+      return;
+    }
+    
+    if (!connectedPhone) {
+      alert('يرجى ربط رقم واتساب أولاً من صفحة إدارة الواتساب');
+      return;
+    }
+
     setSending(true);
     const jobId = Math.random().toString(36).substr(2, 9);
     
@@ -48,27 +72,38 @@ const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ isOpen, onClose, leadName
       createdAt: new Date().toISOString()
     });
 
-    setTimeout(() => {
-      updateJob(jobId, { progress: 100, status: JobStatus.SUCCESS, message: 'تم إرسال الرسالة بنجاح' });
+    try {
+      // إرسال الرسالة عبر API
+      const result = await sendWhatsAppWebMessage(recipientPhone, message);
       
-      if (leadId) {
-        addActivity(leadId, {
-          id: Math.random().toString(36).substr(2, 9),
-          leadId,
-          type: 'WHATSAPP',
-          description: `تم إرسال رسالة واتساب: "${message.slice(0, 30)}..."`,
-          timestamp: new Date().toISOString(),
-          user: 'أحمد (مبيعات)'
-        });
-      }
+      if (result.success) {
+        updateJob(jobId, { progress: 100, status: JobStatus.SUCCESS, message: 'تم إرسال الرسالة بنجاح' });
+        
+        if (leadId) {
+          addActivity(leadId, {
+            id: Math.random().toString(36).substr(2, 9),
+            leadId,
+            type: 'WHATSAPP',
+            description: `تم إرسال رسالة واتساب إلى ${recipientPhone}: "${message.slice(0, 30)}..."`,
+            timestamp: new Date().toISOString(),
+            user: 'أحمد (مبيعات)'
+          });
+        }
 
+        setSending(false);
+        setSuccess(true);
+        setTimeout(() => {
+          onClose();
+          setSuccess(false);
+        }, 1500);
+      } else {
+        throw new Error(result.error || 'فشل إرسال الرسالة');
+      }
+    } catch (error: any) {
+      updateJob(jobId, { progress: 100, status: JobStatus.FAILED, message: error.message || 'فشل إرسال الرسالة' });
       setSending(false);
-      setSuccess(true);
-      setTimeout(() => {
-        onClose();
-        setSuccess(false);
-      }, 1500);
-    }, 1800);
+      alert(error.message || 'فشل إرسال الرسالة');
+    }
   };
 
   const applyTemplate = (content: string) => {
@@ -94,15 +129,59 @@ const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ isOpen, onClose, leadName
         <div className="p-8 space-y-6">
           <div className="flex flex-col md:flex-row gap-6">
             <div className="flex-1 space-y-4">
+               {/* رقم المرسل (من إدارة الواتساب) */}
                <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">المرسل إليه</label>
-                <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center justify-between group hover:border-blue-200 transition-colors">
-                  <div className="flex flex-col">
-                    <span className="font-bold text-gray-900">{leadName}</span>
-                    <span className="text-xs text-gray-500 font-mono">{phone || '05XXXXXXXX'}</span>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">المرسل من</label>
+                <div className="bg-green-50 p-4 rounded-2xl border border-green-100 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-green-100 rounded-xl">
+                      <Phone size={16} className="text-green-600" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-green-600 font-bold">الرقم المربوط</span>
+                      <span className="font-bold text-gray-900 font-mono text-sm">{connectedPhone || 'غير مربوط'}</span>
+                    </div>
                   </div>
                   <CheckCircle2 size={18} className="text-green-500" />
                 </div>
+              </div>
+
+               {/* رقم المرسل إليه (قابل للتعديل) */}
+               <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">المرسل إليه</label>
+                {isEditingPhone ? (
+                  <div className="bg-white p-4 rounded-2xl border-2 border-blue-400 flex items-center gap-3">
+                    <input
+                      type="tel"
+                      value={recipientPhone}
+                      onChange={(e) => setRecipientPhone(e.target.value)}
+                      className="flex-1 bg-transparent outline-none font-mono text-gray-900 text-sm"
+                      placeholder="05XXXXXXXX"
+                      autoFocus
+                      dir="ltr"
+                    />
+                    <button
+                      onClick={() => setIsEditingPhone(false)}
+                      className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+                    >
+                      <CheckCircle2 size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center justify-between group hover:border-blue-200 transition-colors">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-gray-900">{leadName}</span>
+                      <span className="text-xs text-gray-500 font-mono">{recipientPhone || '05XXXXXXXX'}</span>
+                    </div>
+                    <button
+                      onClick={() => setIsEditingPhone(true)}
+                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                      title="تعديل الرقم"
+                    >
+                      <Edit3 size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>

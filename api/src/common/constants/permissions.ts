@@ -35,8 +35,10 @@ export const Permissions = {
   REPORT_GENERATE: 'report:generate',
 
   // WhatsApp
+  WHATSAPP_VIEW: 'whatsapp:view',
   WHATSAPP_SEND: 'whatsapp:send',
   WHATSAPP_BULK: 'whatsapp:bulk',
+  WHATSAPP_MANAGE: 'whatsapp:manage',
 
   // Settings
   SETTINGS_VIEW: 'settings:view',
@@ -78,8 +80,10 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     Permissions.JOB_CANCEL,
     Permissions.REPORT_VIEW,
     Permissions.REPORT_GENERATE,
+    Permissions.WHATSAPP_VIEW,
     Permissions.WHATSAPP_SEND,
     Permissions.WHATSAPP_BULK,
+    Permissions.WHATSAPP_MANAGE,
     Permissions.SETTINGS_VIEW,
     Permissions.SETTINGS_EDIT,
     Permissions.AUDIT_VIEW,
@@ -99,6 +103,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     Permissions.JOB_CREATE,
     Permissions.REPORT_VIEW,
     Permissions.REPORT_GENERATE,
+    Permissions.WHATSAPP_VIEW,
     Permissions.WHATSAPP_SEND,
   ],
 
@@ -110,6 +115,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     Permissions.LIST_VIEW,
     Permissions.JOB_VIEW,
     Permissions.REPORT_VIEW,
+    Permissions.WHATSAPP_VIEW,
     Permissions.WHATSAPP_SEND,
   ],
 };

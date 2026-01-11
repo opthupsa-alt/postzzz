@@ -4,6 +4,7 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { v4 as uuidv4 } from 'uuid';
@@ -15,6 +16,7 @@ export class InvitesService {
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
+    private jwtService: JwtService,
   ) {}
 
   async create(
@@ -95,7 +97,46 @@ export class InvitesService {
     });
   }
 
-  async accept(token: string, password: string, name?: string) {
+  async validate(token: string) {
+    const invite = await this.prisma.invite.findUnique({
+      where: { token },
+      include: {
+        tenant: true,
+        inviter: { select: { name: true } },
+      },
+    });
+
+    if (!invite) {
+      return { valid: false, message: 'Invite not found' };
+    }
+
+    if (invite.status !== 'PENDING') {
+      return { valid: false, message: 'Invite is no longer valid' };
+    }
+
+    if (new Date() > invite.expiresAt) {
+      return { valid: false, message: 'Invite has expired' };
+    }
+
+    // Check if user already exists
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: invite.email },
+    });
+
+    return {
+      valid: true,
+      isNewUser: !existingUser,
+      invite: {
+        email: invite.email,
+        role: invite.role,
+        tenantName: invite.tenant.name,
+        inviterName: invite.inviter?.name || 'Unknown',
+        expiresAt: invite.expiresAt.toISOString(),
+      },
+    };
+  }
+
+  async accept(token: string, password?: string, name?: string) {
     const invite = await this.prisma.invite.findUnique({
       where: { token },
       include: { tenant: true },
@@ -122,10 +163,15 @@ export class InvitesService {
       where: { email: invite.email },
     });
 
+    // Password is required for new users
+    if (!user && !password) {
+      throw new BadRequestException('Password is required for new users');
+    }
+
     const result = await this.prisma.$transaction(async (tx) => {
       if (!user) {
         // Create new user
-        const passwordHash = await bcrypt.hash(password, 12);
+        const passwordHash = await bcrypt.hash(password!, 12);
         user = await tx.user.create({
           data: {
             email: invite.email,
@@ -165,12 +211,23 @@ export class InvitesService {
       entityId: invite.id,
     });
 
+    // Generate JWT token for auto-login
+    const jwtToken = this.jwtService.sign({
+      sub: result.id,
+      email: result.email,
+      tenantId: invite.tenantId,
+      role: invite.role,
+    });
+
     return {
+      token: jwtToken,
       user: {
         id: result.id,
         email: result.email,
         name: result.name,
       },
+      tenantId: invite.tenantId,
+      role: invite.role,
       tenant: invite.tenant,
     };
   }

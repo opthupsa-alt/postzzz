@@ -188,7 +188,15 @@ export class OpenAIProvider extends BaseAIProvider {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
-      throw new Error(`OpenAI Responses API Error: ${error.error?.message || response.statusText}`);
+      const errorMessage = error.error?.message || response.statusText;
+      
+      // Fallback to standard Chat Completions if Responses API fails (quota, rate limit, etc.)
+      if (errorMessage.includes('quota') || errorMessage.includes('rate') || response.status === 429 || response.status === 402) {
+        console.warn('[OpenAI] Responses API failed, falling back to Chat Completions:', errorMessage);
+        return this.completeStandard(request);
+      }
+      
+      throw new Error(`OpenAI Responses API Error: ${errorMessage}`);
     }
 
     const data = await response.json();

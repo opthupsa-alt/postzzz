@@ -33,6 +33,8 @@ import AdminTenantDetail from './pages/admin/AdminTenantDetail';
 import AdminDataBank from './pages/admin/AdminDataBank';
 import AISettingsPage from './pages/admin/AISettingsPage';
 import ExtensionSettingsPage from './pages/ExtensionSettingsPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+import AcceptInvitePage from './pages/AcceptInvitePage';
 
 const App = () => {
   return (
@@ -41,6 +43,8 @@ const App = () => {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/invite/:token" element={<AcceptInvitePage />} />
         <Route path="/extension-preview" element={<ExtensionSidePanel />} />
         
         <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
