@@ -130,22 +130,27 @@ async function clearStorageData() {
 
 async function fetchPlatformConfig() {
   try {
-    const response = await fetch(`${platformConfig.apiUrl}/api/agent/config`);
+    // First try to load from storage
+    const stored = await getStorageData([STORAGE_KEYS.PLATFORM_CONFIG]);
+    if (stored[STORAGE_KEYS.PLATFORM_CONFIG]) {
+      platformConfig = { ...platformConfig, ...stored[STORAGE_KEYS.PLATFORM_CONFIG] };
+    }
+    
+    // Then try to fetch from API (optional, don't fail if not available)
+    const response = await fetch(`${platformConfig.apiUrl}/api/agent/config`, {
+      signal: AbortSignal.timeout(5000) // 5 second timeout
+    });
     if (response.ok) {
       const data = await response.json();
       if (data.platform) {
         platformConfig = { ...platformConfig, ...data.platform };
         await setStorageData({ [STORAGE_KEYS.PLATFORM_CONFIG]: platformConfig });
-        console.log('[Leedz] Platform config updated:', platformConfig);
+        console.log('[Leedz] Platform config updated from API');
       }
     }
   } catch (error) {
-    console.error('[Leedz] Failed to fetch platform config:', error);
-    // Try to load from storage
-    const stored = await getStorageData([STORAGE_KEYS.PLATFORM_CONFIG]);
-    if (stored[STORAGE_KEYS.PLATFORM_CONFIG]) {
-      platformConfig = stored[STORAGE_KEYS.PLATFORM_CONFIG];
-    }
+    // Silently ignore - this is optional and not critical
+    console.log('[Leedz] Using local config (API config not available)');
   }
   return platformConfig;
 }
@@ -237,7 +242,8 @@ async function verifyToken() {
     await apiRequest('/auth/me');
     return true;
   } catch (error) {
-    console.error('Token verification failed:', error);
+    // Silently handle - user is not logged in
+    console.log('[Leedz] Token not valid or user not logged in');
     await logout();
     return false;
   }
@@ -317,7 +323,8 @@ async function checkPlatformLogin() {
       return { success: false, reason: 'not_logged_in', platformUrl };
     }
   } catch (error) {
-    console.error('[Leedz] Auto-login error:', error);
+    // Silently handle - auto-login is optional
+    console.log('[Leedz] Auto-login not available:', error.message);
     return { success: false, reason: 'error', error: error.message };
   }
 }
@@ -389,7 +396,8 @@ async function injectAndReadPlatformAuth(tabId) {
     
     return results[0]?.result;
   } catch (error) {
-    console.error('[Leedz] Failed to read platform auth:', error);
+    // Silently handle - this is expected when platform page is not accessible
+    console.log('[Leedz] Platform auth not accessible (user may need to login on platform)');
     return null;
   }
 }
@@ -543,8 +551,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return { success: true };
 
         case 'GET_RECENT_SEARCH':
-          // Get most recent search from API
+          // Get most recent search from API (only if authenticated)
           try {
+            const authState = await getAuthState();
+            if (!authState.isAuthenticated) {
+              return { success: false, message: 'Not authenticated' };
+            }
             const recentSearches = await apiRequest('/search-history/recent?limit=1');
             if (recentSearches && recentSearches.length > 0) {
               // Get full details including results
@@ -553,7 +565,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
             return { success: false, message: 'No recent searches' };
           } catch (error) {
-            console.error('[Leedz] Get recent search error:', error);
+            // Silently handle - user may not be logged in
+            console.log('[Leedz] Recent search not available:', error.message);
             return { success: false, error: error.message };
           }
 
@@ -4872,31 +4885,36 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 (async () => {
   console.log('[Leedz Extension] Initializing...');
   
-  // 1. Fetch platform config
-  await fetchPlatformConfig();
+  // 1. Load local config (don't fetch from API on startup to avoid errors)
+  await loadLocalConfig();
   
-  // 2. Check existing auth
+  // 2. Try to load platform config from storage (don't fetch from API)
+  try {
+    const stored = await getStorageData([STORAGE_KEYS.PLATFORM_CONFIG]);
+    if (stored[STORAGE_KEYS.PLATFORM_CONFIG]) {
+      platformConfig = { ...platformConfig, ...stored[STORAGE_KEYS.PLATFORM_CONFIG] };
+    }
+  } catch (e) {
+    // Ignore
+  }
+  
+  // 3. Check existing auth (only if we have a token)
   const { [STORAGE_KEYS.AUTH_TOKEN]: token } = await getStorageData([STORAGE_KEYS.AUTH_TOKEN]);
   
   if (token) {
-    // Verify existing token
+    // Verify existing token silently
     try {
       await apiRequest('/auth/me');
-      console.log('[Leedz] Existing token valid, starting polling and WebSocket');
-      startPolling(); // Start polling first (more reliable)
-      await connectWebSocket(); // WebSocket as backup
+      console.log('[Leedz] Existing token valid, starting services');
+      startPolling();
+      // Don't connect WebSocket on startup - it's optional
     } catch (e) {
-      console.log('[Leedz] Existing token invalid, will try auto-login');
+      console.log('[Leedz] Token expired, clearing auth');
       await clearStorageData();
-      // Try auto-login
-      if (platformConfig.extensionAutoLogin) {
-        await checkPlatformLogin();
-      }
     }
-  } else if (platformConfig.extensionAutoLogin) {
-    // Try auto-login from platform
-    console.log('[Leedz] No token, attempting auto-login from platform');
-    await checkPlatformLogin();
+  } else {
+    console.log('[Leedz] No token found - user needs to login');
+    // Don't try auto-login on startup - wait for user action
   }
   
   console.log('[Leedz Extension] Initialization complete');
