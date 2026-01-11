@@ -24,6 +24,8 @@ import { SearchHistoryModule } from './search-history/search-history.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { ClientsModule } from './clients/clients.module';
 import { PostsModule } from './posts/posts.module';
+import { DevicesModule } from './devices/devices.module';
+import { PublishingModule } from './publishing/publishing.module';
 
 @Module({
   imports: [
@@ -78,6 +80,8 @@ import { PostsModule } from './posts/posts.module';
     WhatsAppModule,
     ClientsModule,
     PostsModule,
+    DevicesModule,
+    PublishingModule,
   ],
 })
 export class AppModule {}

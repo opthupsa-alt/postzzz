@@ -1,10 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Calendar, ChevronRight, ChevronLeft, Filter, AlertCircle } from 'lucide-react';
+import { Plus, Calendar, ChevronRight, ChevronLeft, LayoutGrid, AlertCircle } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
-import { getPosts, Post, POST_STATUS_CONFIG } from '../lib/posts-api';
+import { getPosts, Post, POST_STATUS_CONFIG, PostStatus, ALL_POST_STATUSES } from '../lib/posts-api';
 import { getClients, Client } from '../lib/clients-api';
+
+type ViewMode = 'calendar' | 'board';
+
+const BOARD_COLUMNS: { status: PostStatus; label: string }[] = [
+  { status: 'DRAFT', label: 'مسودة' },
+  { status: 'PENDING_APPROVAL', label: 'بانتظار الموافقة' },
+  { status: 'APPROVED', label: 'تمت الموافقة' },
+  { status: 'SCHEDULED', label: 'مجدول' },
+  { status: 'PUBLISHING', label: 'جاري النشر' },
+  { status: 'PUBLISHED', label: 'تم النشر' },
+  { status: 'FAILED', label: 'فشل' },
+];
 
 const CalendarPage: React.FC = () => {
   const navigate = useNavigate();
@@ -14,6 +26,7 @@ const CalendarPage: React.FC = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [viewMode, setViewMode] = useState<ViewMode>('calendar');
 
   useEffect(() => {
     loadClients();
@@ -122,6 +135,27 @@ const CalendarPage: React.FC = () => {
         subtitle="جدولة ومتابعة المنشورات"
         actions={
           <div className="flex items-center gap-3">
+            {/* View Toggle */}
+            <div className="flex bg-gray-100 rounded-xl p-1">
+              <button
+                onClick={() => setViewMode('calendar')}
+                className={`px-4 py-2 rounded-lg font-bold transition-colors flex items-center gap-2 ${
+                  viewMode === 'calendar' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600'
+                }`}
+              >
+                <Calendar size={18} />
+                تقويم
+              </button>
+              <button
+                onClick={() => setViewMode('board')}
+                className={`px-4 py-2 rounded-lg font-bold transition-colors flex items-center gap-2 ${
+                  viewMode === 'board' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600'
+                }`}
+              >
+                <LayoutGrid size={18} />
+                لوحة
+              </button>
+            </div>
             <select
               value={selectedClientId}
               onChange={(e) => setSelectedClientId(e.target.value)}
@@ -143,7 +177,8 @@ const CalendarPage: React.FC = () => {
         }
       />
 
-      {/* Calendar Header */}
+      {/* Calendar View */}
+      {viewMode === 'calendar' && (
       <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b border-gray-100">
           <div className="flex items-center gap-4">
@@ -231,8 +266,64 @@ const CalendarPage: React.FC = () => {
           })}
         </div>
       </div>
+      )}
 
-      {posts.length === 0 && (
+      {/* Board View */}
+      {viewMode === 'board' && (
+        <div className="overflow-x-auto pb-4">
+          <div className="flex gap-4 min-w-max">
+            {BOARD_COLUMNS.map(column => {
+              const columnPosts = posts.filter(p => p.status === column.status);
+              const statusConfig = POST_STATUS_CONFIG[column.status];
+              return (
+                <div key={column.status} className="w-72 flex-shrink-0">
+                  <div className={`rounded-t-2xl p-3 ${statusConfig.color}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold">{column.label}</span>
+                      <span className="text-sm opacity-75">{columnPosts.length}</span>
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 rounded-b-2xl p-3 min-h-[400px] space-y-3">
+                    {columnPosts.map(post => (
+                      <div
+                        key={post.id}
+                        onClick={() => navigate(`/app/posts/${post.id}`)}
+                        className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
+                      >
+                        <p className="font-bold text-gray-900 text-sm mb-2">
+                          {post.title || 'بدون عنوان'}
+                        </p>
+                        <p className="text-xs text-gray-500 mb-2">{post.client.name}</p>
+                        {post.scheduledAt && (
+                          <p className="text-xs text-gray-400">
+                            {new Date(post.scheduledAt).toLocaleDateString('ar-SA')}
+                          </p>
+                        )}
+                        {post.platforms && post.platforms.length > 0 && (
+                          <div className="flex gap-1 mt-2">
+                            {post.platforms.slice(0, 3).map(p => (
+                              <span key={p} className="text-[10px] bg-gray-100 px-2 py-0.5 rounded font-bold">
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {columnPosts.length === 0 && (
+                      <div className="text-center text-gray-400 text-sm py-8">
+                        لا توجد منشورات
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {posts.length === 0 && viewMode === 'calendar' && (
         <div className="mt-8">
           <EmptyState 
             icon={Calendar}

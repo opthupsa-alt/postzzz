@@ -42,6 +42,9 @@ model Tenant {
   postVariants  PostVariant[]
   mediaAssets   MediaAsset[]
   platformRules PlatformRule[]
+  deviceAgents  DeviceAgent[]
+  publishingJobs PublishingJob[]
+  publishingRuns PublishingRun[]
 
   @@map("tenants")
 }
@@ -712,6 +715,8 @@ model Client {
   createdBy   User?        @relation("ClientCreatedBy", fields: [createdById], references: [id])
   platforms   ClientPlatform[]
   posts       Post[]
+  deviceAgents DeviceAgent[]
+  publishingJobs PublishingJob[]
 
   @@index([tenantId, status])
   @@index([tenantId, name])
@@ -787,6 +792,7 @@ model Post {
   createdBy     User        @relation("PostCreatedBy", fields: [createdById], references: [id])
   approvedBy    User?       @relation("PostApprovedBy", fields: [approvedById], references: [id])
   variants      PostVariant[]
+  publishingJobs PublishingJob[]
 
   @@index([tenantId, status])
   @@index([tenantId, clientId])
@@ -834,6 +840,7 @@ model MediaAsset {
 
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   uploadedBy    User      @relation("MediaUploadedBy", fields: [uploadedById], references: [id])
+  proofRuns     PublishingRun[]
 
   @@index([tenantId])
   @@index([tenantId, type])
@@ -857,5 +864,108 @@ model PlatformRule {
   @@unique([tenantId, platform])
   @@index([platform])
   @@map("platform_rules")
+}
+
+// ==================== Publishing Engine ====================
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+}
+
+enum PublishingJobStatus {
+  QUEUED
+  CLAIMED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  NEEDS_LOGIN
+  CANCELLED
+}
+
+enum RunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  NEEDS_LOGIN
+}
+
+model DeviceAgent {
+  id            String       @id @default(uuid())
+  tenantId      String
+  name          String
+  clientId      String?
+  status        DeviceStatus @default(OFFLINE)
+  lastSeenAt    DateTime?
+  capabilities  Json?
+  userAgent     String?
+  version       String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client        Client?      @relation(fields: [clientId], references: [id])
+  lockedJobs    PublishingJob[] @relation("JobLockedByDevice")
+  runs          PublishingRun[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, clientId])
+  @@map("device_agents")
+}
+
+model PublishingJob {
+  id                String         @id @default(uuid())
+  tenantId          String
+  postId            String
+  clientId          String
+  platform          SocialPlatform
+  scheduledAt       DateTime
+  status            PublishingJobStatus @default(QUEUED)
+  priority          Int            @default(5)
+  attemptCount      Int            @default(0)
+  maxAttempts       Int            @default(3)
+  lockedByDeviceId  String?
+  lockedAt          DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+  idempotencyKey    String
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  tenant            Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  post              Post           @relation(fields: [postId], references: [id], onDelete: Cascade)
+  client            Client         @relation(fields: [clientId], references: [id])
+  lockedByDevice    DeviceAgent?   @relation("JobLockedByDevice", fields: [lockedByDeviceId], references: [id])
+  runs              PublishingRun[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status])
+  @@index([tenantId, scheduledAt])
+  @@index([tenantId, postId])
+  @@map("publishing_jobs")
+}
+
+model PublishingRun {
+  id                      String    @id @default(uuid())
+  tenantId                String
+  jobId                   String
+  deviceId                String
+  startedAt               DateTime  @default(now())
+  finishedAt              DateTime?
+  status                  RunStatus @default(RUNNING)
+  logs                    Json?
+  proofScreenshotAssetId  String?
+  publishedUrl            String?
+  failureReason           String?
+  createdAt               DateTime  @default(now())
+
+  tenant                  Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job                     PublishingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  device                  DeviceAgent @relation(fields: [deviceId], references: [id])
+  proofScreenshot         MediaAsset? @relation(fields: [proofScreenshotAssetId], references: [id])
+
+  @@index([tenantId, jobId])
+  @@index([deviceId])
+  @@map("publishing_runs")
 }
 

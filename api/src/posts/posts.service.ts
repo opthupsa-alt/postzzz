@@ -398,6 +398,9 @@ export class PostsService {
   async schedule(tenantId: string, userId: string, postId: string, scheduledAt?: string) {
     const post = await this.prisma.post.findFirst({
       where: { id: postId, tenantId },
+      include: {
+        variants: true,
+      },
     });
 
     if (!post) {
@@ -414,7 +417,34 @@ export class PostsService {
       throw new BadRequestException('Scheduled time is required');
     }
 
-    const updated = await this.prisma.post.update({
+    if (!post.variants || post.variants.length === 0) {
+      throw new BadRequestException('Post has no variants to publish');
+    }
+
+    // Create publishing jobs for each variant (idempotent)
+    for (const variant of post.variants) {
+      const idempotencyKey = `${postId}:${variant.platform}:${scheduleTime.toISOString()}`;
+
+      await this.prisma.publishingJob.upsert({
+        where: {
+          tenantId_idempotencyKey: { tenantId, idempotencyKey },
+        },
+        update: {
+          scheduledAt: scheduleTime,
+        },
+        create: {
+          tenantId,
+          postId,
+          clientId: post.clientId,
+          platform: variant.platform,
+          scheduledAt: scheduleTime,
+          idempotencyKey,
+        },
+      });
+    }
+
+    // Update post status
+    await this.prisma.post.update({
       where: { id: postId },
       data: { 
         status: 'SCHEDULED',
@@ -428,7 +458,7 @@ export class PostsService {
       action: 'POST_SCHEDULE',
       entityType: 'POST',
       entityId: postId,
-      metadata: { title: post.title, scheduledAt: scheduleTime },
+      metadata: { title: post.title, scheduledAt: scheduleTime, jobsCreated: post.variants.length },
     });
 
     return this.findById(tenantId, postId);

@@ -1,36 +1,73 @@
 import React, { useState, useEffect } from 'react';
-import { Smartphone, Wifi, WifiOff, MoreHorizontal, RefreshCw, Trash2, Building2 } from 'lucide-react';
+import { Smartphone, Wifi, WifiOff, RefreshCw, Trash2, Building2, AlertCircle, Edit2 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
-
-interface DeviceAgent {
-  id: string;
-  name: string;
-  fingerprint: string;
-  status: 'ONLINE' | 'OFFLINE' | 'BUSY';
-  lastSeenAt?: string;
-  clientName?: string;
-  clientId?: string;
-}
+import { getDevices, deleteDevice, updateDevice, DeviceAgent } from '../lib/devices-api';
+import { getClients, Client } from '../lib/clients-api';
 
 const STATUS_CONFIG = {
   ONLINE: { label: 'متصل', color: 'bg-green-50 text-green-600', dot: 'bg-green-500' },
   OFFLINE: { label: 'غير متصل', color: 'bg-gray-100 text-gray-500', dot: 'bg-gray-400' },
-  BUSY: { label: 'مشغول', color: 'bg-orange-50 text-orange-600', dot: 'bg-orange-500' },
 };
 
 const DevicesPage: React.FC = () => {
   const [devices, setDevices] = useState<DeviceAgent[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editingDevice, setEditingDevice] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editClientId, setEditClientId] = useState('');
 
   useEffect(() => {
-    loadDevices();
+    loadData();
   }, []);
 
-  const loadDevices = async () => {
-    // TODO: Replace with actual API call
-    setDevices([]);
-    setLoading(false);
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [devicesData, clientsData] = await Promise.all([
+        getDevices(),
+        getClients(),
+      ]);
+      setDevices(devicesData);
+      setClients(clientsData);
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء تحميل الأجهزة');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (deviceId: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذا الجهاز؟')) return;
+    try {
+      await deleteDevice(deviceId);
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء حذف الجهاز');
+    }
+  };
+
+  const startEdit = (device: DeviceAgent) => {
+    setEditingDevice(device.id);
+    setEditName(device.name);
+    setEditClientId(device.clientId || '');
+  };
+
+  const saveEdit = async () => {
+    if (!editingDevice) return;
+    try {
+      await updateDevice(editingDevice, {
+        name: editName,
+        clientId: editClientId || undefined,
+      });
+      setEditingDevice(null);
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء تحديث الجهاز');
+    }
   };
 
   const onlineCount = devices.filter(d => d.status === 'ONLINE').length;
@@ -120,15 +157,15 @@ const DevicesPage: React.FC = () => {
                           <div className={`w-2 h-2 rounded-full ${statusConfig.dot} ${device.status === 'ONLINE' ? 'animate-pulse' : ''}`}></div>
                         </div>
                         <p className="text-sm text-gray-500">
-                          {device.fingerprint.substring(0, 8)}...
+                          {device.version || device.id.substring(0, 8)}...
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-6">
-                      {device.clientName ? (
+                      {device.client ? (
                         <div className="flex items-center gap-2 text-sm">
                           <Building2 size={16} className="text-gray-400" />
-                          <span className="font-medium text-gray-700">{device.clientName}</span>
+                          <span className="font-medium text-gray-700">{device.client.name}</span>
                         </div>
                       ) : (
                         <span className="text-sm text-gray-400">غير مرتبط بعميل</span>
@@ -145,10 +182,16 @@ const DevicesPage: React.FC = () => {
                         {statusConfig.label}
                       </span>
                       <div className="flex items-center gap-1">
-                        <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                          <MoreHorizontal size={18} className="text-gray-400" />
+                        <button 
+                          onClick={() => startEdit(device)}
+                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                          <Edit2 size={18} className="text-gray-400" />
                         </button>
-                        <button className="p-2 hover:bg-red-50 rounded-lg transition-colors text-gray-400 hover:text-red-500">
+                        <button 
+                          onClick={() => handleDelete(device.id)}
+                          className="p-2 hover:bg-red-50 rounded-lg transition-colors text-gray-400 hover:text-red-500"
+                        >
                           <Trash2 size={18} />
                         </button>
                       </div>
