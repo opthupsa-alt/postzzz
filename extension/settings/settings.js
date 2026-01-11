@@ -52,8 +52,8 @@ const PLATFORMS = [
     id: 'snapchat', 
     name: 'Snapchat', 
     icon: '👻', 
-    url: 'https://www.snapchat.com/', 
-    loginUrl: 'https://accounts.snapchat.com/accounts/login',
+    url: 'https://web.snapchat.com/', 
+    loginUrl: 'https://accounts.snapchat.com/accounts/v2/login',
     color: '#FFFC00'
   },
 ];
@@ -205,16 +205,77 @@ async function saveSettingsToBackend(settings) {
 
 // ==================== Platform Functions ====================
 
+// تحقق من تسجيل الدخول عبر cookies (أكثر موثوقية)
+async function checkLoginViaCookies(platform) {
+  const cookieChecks = {
+    'instagram': { domain: '.instagram.com', names: ['sessionid', 'ds_user_id'] },
+    'twitter': { domain: '.x.com', names: ['auth_token', 'ct0'] },
+    'facebook': { domain: '.facebook.com', names: ['c_user', 'xs'] },
+    'linkedin': { domain: '.linkedin.com', names: ['li_at', 'JSESSIONID'] },
+    'tiktok': { domain: '.tiktok.com', names: ['sessionid', 'sid_tt', 'sessionid_ss'] },
+    'snapchat': { domain: '.snapchat.com', names: ['sc-a-session', 'web-client-session'] },
+  };
+  
+  const check = cookieChecks[platform.id];
+  if (!check) return false;
+  
+  try {
+    for (const cookieName of check.names) {
+      const cookie = await chrome.cookies.get({
+        url: `https://${check.domain.replace('.', '')}`,
+        name: cookieName
+      });
+      if (cookie && cookie.value) {
+        console.log(`[Leedz] Found cookie ${cookieName} for ${platform.id}`);
+        return true;
+      }
+    }
+    
+    // Try with www subdomain
+    for (const cookieName of check.names) {
+      const cookie = await chrome.cookies.get({
+        url: `https://www${check.domain}`,
+        name: cookieName
+      });
+      if (cookie && cookie.value) {
+        console.log(`[Leedz] Found cookie ${cookieName} for ${platform.id} (www)`);
+        return true;
+      }
+    }
+  } catch (error) {
+    console.log(`[Leedz] Cookie check failed for ${platform.id}:`, error.message);
+  }
+  
+  return false;
+}
+
 async function checkPlatformLogin(platform) {
   try {
+    // First try cookie-based check (faster and more reliable)
+    const cookieResult = await checkLoginViaCookies(platform);
+    if (cookieResult) {
+      console.log(`[Leedz] ${platform.id} logged in via cookies`);
+      return true;
+    }
+    
+    // Fallback to DOM-based check
+    console.log(`[Leedz] Checking ${platform.id} via DOM...`);
+    
     // Create a hidden tab to check login status
     const tab = await chrome.tabs.create({
       url: platform.url,
       active: false,
     });
     
-    // Wait for tab to load
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Wait for tab to load - different platforms need different times
+    const waitTimes = {
+      'linkedin': 6000,  // LinkedIn يحتاج وقت أطول
+      'tiktok': 6000,    // TikTok يحتاج وقت أطول
+      'snapchat': 6000,  // Snapchat يحتاج وقت أطول
+      'default': 4000
+    };
+    const waitTime = waitTimes[platform.id] || waitTimes.default;
+    await new Promise(resolve => setTimeout(resolve, waitTime));
     
     // Check login status
     const results = await chrome.scripting.executeScript({
@@ -224,25 +285,75 @@ async function checkPlatformLogin(platform) {
         // Each platform has different login indicators
         switch (platformId) {
           case 'instagram':
+            // Instagram: تحقق من وجود عناصر الصفحة الرئيسية أو الملف الشخصي
             return !!document.querySelector('[aria-label="Home"]') || 
                    !!document.querySelector('[aria-label="الصفحة الرئيسية"]') ||
-                   !!document.querySelector('svg[aria-label="Home"]');
+                   !!document.querySelector('svg[aria-label="Home"]') ||
+                   !!document.querySelector('[href="/direct/inbox/"]') ||
+                   !!document.querySelector('a[href*="/direct/"]');
           case 'twitter':
+            // X/Twitter: تحقق من وجود عناصر التنقل أو الحساب
             return !!document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]') ||
-                   !!document.querySelector('[data-testid="AppTabBar_Home_Link"]');
+                   !!document.querySelector('[data-testid="AppTabBar_Home_Link"]') ||
+                   !!document.querySelector('[data-testid="primaryColumn"]') ||
+                   !!document.querySelector('a[href="/compose/tweet"]');
           case 'facebook':
+            // Facebook: تحقق من وجود عناصر الملف الشخصي أو الإشعارات
             return !!document.querySelector('[aria-label="Your profile"]') ||
                    !!document.querySelector('[aria-label="ملفك الشخصي"]') ||
-                   !!document.querySelector('[aria-label="Account"]');
+                   !!document.querySelector('[aria-label="Account"]') ||
+                   !!document.querySelector('[aria-label="Messenger"]') ||
+                   !!document.querySelector('[data-pagelet="ProfileTilesFeed"]');
           case 'linkedin':
+            // LinkedIn: تحقق من عناصر متعددة للتأكد من تسجيل الدخول
             return !!document.querySelector('.global-nav__me') ||
-                   !!document.querySelector('[data-control-name="identity_welcome_message"]');
+                   !!document.querySelector('.global-nav__me-photo') ||
+                   !!document.querySelector('[data-control-name="identity_welcome_message"]') ||
+                   !!document.querySelector('.feed-identity-module') ||
+                   !!document.querySelector('[data-test-id="nav-settings__profile-link"]') ||
+                   !!document.querySelector('.nav-item__profile-member-photo') ||
+                   !!document.querySelector('img.global-nav__me-photo') ||
+                   !!document.querySelector('[class*="artdeco-entity-lockup__title"]') ||
+                   !!document.querySelector('.scaffold-layout__main') ||
+                   // تحقق من عدم وجود صفحة تسجيل الدخول
+                   (document.querySelector('.authentication-outlet') === null && 
+                    document.querySelector('.feed-shared-update-v2') !== null) ||
+                   // تحقق من وجود الـ feed
+                   !!document.querySelector('[data-finite-scroll-hotkey-context="FEED"]') ||
+                   // تحقق من cookies
+                   document.cookie.includes('li_at');
           case 'tiktok':
+            // TikTok: تحقق من عناصر متعددة للتأكد من تسجيل الدخول
             return !!document.querySelector('[data-e2e="profile-icon"]') ||
-                   !!document.querySelector('[data-e2e="nav-profile"]');
+                   !!document.querySelector('[data-e2e="nav-profile"]') ||
+                   !!document.querySelector('[data-e2e="upload-icon"]') ||
+                   !!document.querySelector('[data-e2e="message-icon"]') ||
+                   !!document.querySelector('.avatar-anchor') ||
+                   !!document.querySelector('[class*="DivProfileContainer"]') ||
+                   !!document.querySelector('[class*="StyledProfileLink"]') ||
+                   !!document.querySelector('[data-e2e="inbox"]') ||
+                   // تحقق من وجود زر الرفع (يظهر فقط للمسجلين)
+                   !!document.querySelector('a[href*="/upload"]') ||
+                   // تحقق من عدم وجود صفحة تسجيل الدخول
+                   (document.querySelector('[data-e2e="login-button"]') === null &&
+                    document.querySelector('[class*="DivSideNavContainer"]') !== null) ||
+                   // تحقق من cookies
+                   document.cookie.includes('sessionid') ||
+                   document.cookie.includes('sid_tt');
           case 'snapchat':
+            // Snapchat Web: تحقق من عناصر متعددة
             return !!document.querySelector('.logged-in-indicator') ||
-                   document.body.innerHTML.includes('logout');
+                   !!document.querySelector('[class*="UserProfile"]') ||
+                   !!document.querySelector('[class*="AccountMenu"]') ||
+                   !!document.querySelector('[data-testid="user-menu"]') ||
+                   !!document.querySelector('[class*="NavBar"]') ||
+                   // تحقق من عدم وجود صفحة تسجيل الدخول
+                   (document.querySelector('input[name="username"]') === null &&
+                    document.querySelector('input[name="password"]') === null &&
+                    document.body.innerHTML.length > 10000) ||
+                   // تحقق من cookies
+                   document.cookie.includes('sc-a-session') ||
+                   document.cookie.includes('web-client-session');
           default:
             return false;
         }

@@ -22,7 +22,8 @@
     "activeTab",
     "scripting",
     "windows",
-    "alarms"
+    "alarms",
+    "cookies"
   ],
   
   "host_permissions": [
