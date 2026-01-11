@@ -19,12 +19,6 @@ config.local.json
 extension/config.js
 .env.master
 
-# WhatsApp Web.js session data (contains sensitive auth data)
-.wwebjs_auth/
-.wwebjs_cache/
-api/.wwebjs_auth/
-api/.wwebjs_cache/
-
 # ─────────────────────────────────────────────────────────────────────────────────
 # DEPENDENCIES
 # ─────────────────────────────────────────────────────────────────────────────────
@@ -75,6 +69,14 @@ Thumbs.db
 # ─────────────────────────────────────────────────────────────────────────────────
 coverage/
 .nyc_output/
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# WHATSAPP WEB.JS (Session & Cache)
+# ─────────────────────────────────────────────────────────────────────────────────
+.wwebjs_auth/
+.wwebjs_cache/
+api/.wwebjs_auth/
+api/.wwebjs_cache/
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # MISC
