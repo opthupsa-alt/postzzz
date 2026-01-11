@@ -4,10 +4,10 @@
  */
 
 // ==================== Configuration ====================
-// يتم تحميل الإعدادات من config.js (يُولَّد من config.local.json)
+// يتم تحميل الإعدادات من config.js - الافتراضي هو الإنتاج
 const CONFIG = typeof LEEDZ_CONFIG !== 'undefined' ? LEEDZ_CONFIG : {
-  API_URL: 'http://localhost:3001',
-  WEB_URL: 'http://localhost:3000'
+  API_URL: 'https://leedz-api.onrender.com',
+  WEB_URL: 'https://leedz.vercel.app'
 };
 
 // ==================== DOM Elements ====================

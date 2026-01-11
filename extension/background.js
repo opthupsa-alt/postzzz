@@ -10,10 +10,10 @@
  */
 
 // ==================== Default Configuration ====================
-// الإعدادات الافتراضية - يتم تحديثها من config.js عبر sync-and-start.ps1
+// الإعدادات الافتراضية للإنتاج - يمكن تجاوزها من config.js للتطوير المحلي
 const DEFAULT_CONFIG = {
-  API_URL: 'http://localhost:3001',
-  WEB_URL: 'http://localhost:3000',
+  API_URL: 'https://leedz-api.onrender.com',
+  WEB_URL: 'https://leedz.vercel.app',
   DEBUG_MODE: false,
   SHOW_SEARCH_WINDOW: false
 };
@@ -29,10 +29,11 @@ let platformConfig = {
   crawlRateLimit: 20,
 };
 
-// Load config from config.js file
+// Load config from config files
 async function loadLocalConfig() {
-  // Try config.js first, then fallback to config.production.js
-  const configFiles = ['config.js', 'config.production.js'];
+  // Load config.production.js first (in Git), then config.js can override for local dev
+  const configFiles = ['config.production.js', 'config.js'];
+  let configLoaded = false;
   
   for (const configFile of configFiles) {
     try {
@@ -65,14 +66,17 @@ async function loadLocalConfig() {
           apiUrl: platformConfig.apiUrl, 
           platformUrl: platformConfig.platformUrl 
         });
-        return; // Config loaded successfully
+        configLoaded = true;
+        // Continue to next file - config.js can override config.production.js
       }
     } catch (error) {
-      console.log(`[Leedz] Could not load ${configFile}:`, error.message);
+      // Silently ignore - file may not exist
     }
   }
   
-  console.log('[Leedz] Using default config (no config files found)');
+  if (!configLoaded) {
+    console.log('[Leedz] Using default production config');
+  }
 }
 
 // Initialize config on startup

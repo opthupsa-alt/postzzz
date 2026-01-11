@@ -81,7 +81,7 @@ class DeepReportComponent {
    * تنسيق التقرير بالـ AI
    */
   async formatReportWithAI(searchResult) {
-    const apiUrl = this.config.apiUrl || 'http://localhost:3001';
+    const apiUrl = this.config.apiUrl || 'https://leedz-api.onrender.com';
     const token = await this.getAuthToken();
 
     const response = await fetch(`${apiUrl}/survey/format-report`, {

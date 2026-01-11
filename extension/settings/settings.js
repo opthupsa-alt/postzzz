@@ -66,9 +66,9 @@ const STORAGE_KEYS = {
   CONFIG: 'leedz_config',
 };
 
-// Default URLs (يمكن تحديثها من config.js)
-const DEFAULT_API_URL = 'http://localhost:3001';
-const DEFAULT_WEB_URL = 'http://localhost:3000';
+// Default URLs للإنتاج (يمكن تجاوزها من config.js للتطوير المحلي)
+const DEFAULT_API_URL = 'https://leedz-api.onrender.com';
+const DEFAULT_WEB_URL = 'https://leedz.vercel.app';
 
 // Get API URL from config or default
 function getApiUrl() {
