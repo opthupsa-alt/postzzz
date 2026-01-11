@@ -15,9 +15,13 @@
     "db:seed": "cd api && npm run db:seed",
     "db:studio": "cd api && npm run db:studio",
     "lint:api": "cd api && npm run lint",
-    "test:api": "cd api && npm run test"
+    "test:api": "cd api && npm run test",
+    "prepare": "husky"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
   }
 }

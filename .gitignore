@@ -83,3 +83,24 @@ api/.wwebjs_cache/
 # ─────────────────────────────────────────────────────────────────────────────────
 *.local
 *.tsbuildinfo
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# ADDITIONAL SECURITY (POSTZZZ)
+# ─────────────────────────────────────────────────────────────────────────────────
+# Any file with secrets/keys in name
+*secret*
+*SECRET*
+*.key
+*.pem
+*credentials*
+*CREDENTIALS*
+
+# Temporary setup files
+RENDER_ENV_SETUP.txt
+VERCEL_ENV_SETUP.txt
+*_ENV_*.txt
+
+# Production env files
+web/.env.production
+web/.env.production.local
+api/.env.production

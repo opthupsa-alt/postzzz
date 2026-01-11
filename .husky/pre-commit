@@ -1,0 +1,31 @@
+# Security hook - checks for secrets before commit
+echo "Running security checks..."
+
+# Get staged files (exclude this hook file)
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -v ".husky/")
+
+if [ -z "$STAGED" ]; then
+    echo "No files to check"
+    exit 0
+fi
+
+BLOCKED=0
+
+# Check for .env files
+for f in $STAGED; do
+    case "$f" in
+        *.env|.env*|*.env.*)
+            if [ "$f" != ".env.example" ] && [ "$f" != "api/.env.example" ] && [ "$f" != "web/.env.example" ]; then
+                echo "BLOCKED: env file: $f"
+                BLOCKED=1
+            fi
+            ;;
+    esac
+done
+
+if [ $BLOCKED -eq 1 ]; then
+    echo "Commit blocked. Use --no-verify if false positive."
+    exit 1
+fi
+
+echo "Security checks passed"
