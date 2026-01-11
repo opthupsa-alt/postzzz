@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import JobProgressWidget from './JobProgressWidget';
 import NotificationToast from './NotificationToast';
+import ExtensionButton from './ExtensionButton';
 import { useStore } from '../store/useStore';
 import { logout, getStoredUser } from '../lib/api';
 
@@ -187,12 +188,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <Globe size={16} />
               <span>{language === 'ar' ? 'English' : 'العربية'}</span>
             </button>
-            <Link 
-              to="/extension-preview" 
-              className="hidden lg:flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-black border border-blue-100 hover:bg-blue-100 transition-all"
-            >
-              <Smartphone size={16} /> Extension
-            </Link>
+            <ExtensionButton className="hidden lg:flex" variant="default" />
             <div className="relative">
               <button 
                 onClick={() => setShowNotifications(!showNotifications)}

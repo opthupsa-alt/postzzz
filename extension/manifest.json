@@ -34,6 +34,21 @@
     "service_worker": "background.js"
   },
   
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:*/*",
+        "http://127.0.0.1:*/*",
+        "https://*.vercel.app/*",
+        "https://leedz.vercel.app/*",
+        "https://*.leedz.app/*",
+        "https://leedz.app/*"
+      ],
+      "js": ["content-script.js"],
+      "run_at": "document_end"
+    }
+  ],
+  
   "side_panel": {
     "default_path": "sidepanel.html"
   },

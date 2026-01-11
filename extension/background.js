@@ -432,6 +432,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
           return { tab };
 
+        case 'OPEN_SIDE_PANEL_REQUEST':
+          // فتح Side Panel من طلب content script
+          try {
+            const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (currentTab?.windowId) {
+              await chrome.sidePanel.open({ windowId: currentTab.windowId });
+              return { success: true };
+            }
+            return { success: false, error: 'No active window' };
+          } catch (error) {
+            console.error('[Leedz] Failed to open side panel:', error);
+            return { success: false, error: error.message };
+          }
+
+        case 'SYNC_AUTH_FROM_PLATFORM':
+          // مزامنة التوثيق من المنصة
+          if (message.token && message.user) {
+            await setStorageData({
+              [STORAGE_KEYS.AUTH_TOKEN]: message.token,
+              [STORAGE_KEYS.USER]: message.user,
+              [STORAGE_KEYS.TENANT]: message.tenant,
+            });
+            // إعادة الاتصال بـ WebSocket
+            await connectWebSocket();
+            return { success: true };
+          }
+          return { success: false, error: 'Missing token or user' };
+
         case 'CONNECT_WEBSOCKET':
           await connectWebSocket();
           return { success: true };
@@ -583,6 +611,105 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   };
 
   handleMessage().then(sendResponse);
+  return true; // Keep channel open for async response
+});
+
+// ==================== External Message Handler (from Platform) ====================
+// معالج الرسائل الخارجية من المنصة (leedz.vercel.app)
+
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  console.log('[Leedz] External message received:', message.type, 'from:', sender.origin);
+  
+  // التحقق من أن المرسل من المنصة المعتمدة
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5173',
+    'https://leedz.vercel.app',
+    'https://leedz.app',
+  ];
+  
+  // السماح لأي subdomain من vercel.app
+  const isAllowed = allowedOrigins.includes(sender.origin) || 
+                    sender.origin?.endsWith('.vercel.app') ||
+                    sender.origin?.endsWith('.leedz.app');
+  
+  if (!isAllowed) {
+    console.warn('[Leedz] Rejected external message from:', sender.origin);
+    sendResponse({ error: 'Origin not allowed' });
+    return;
+  }
+  
+  const handleExternalMessage = async () => {
+    switch (message.type) {
+      case 'PING':
+        // رد بسيط للتحقق من أن الإضافة مثبتة
+        return { 
+          success: true, 
+          installed: true,
+          version: chrome.runtime.getManifest().version,
+          name: chrome.runtime.getManifest().name,
+        };
+      
+      case 'OPEN_SIDE_PANEL':
+        // فتح Side Panel
+        try {
+          // الحصول على النافذة الحالية
+          const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (currentTab?.windowId) {
+            await chrome.sidePanel.open({ windowId: currentTab.windowId });
+            return { success: true };
+          }
+          return { success: false, error: 'No active window' };
+        } catch (error) {
+          console.error('[Leedz] Failed to open side panel:', error);
+          return { success: false, error: error.message };
+        }
+      
+      case 'OPEN_SETTINGS':
+        // فتح صفحة الإعدادات
+        try {
+          await chrome.tabs.create({ 
+            url: chrome.runtime.getURL('settings/settings.html'),
+            active: true 
+          });
+          return { success: true };
+        } catch (error) {
+          return { success: false, error: error.message };
+        }
+      
+      case 'GET_STATUS':
+        // الحصول على حالة الإضافة
+        const authState = await getAuthState();
+        return {
+          success: true,
+          installed: true,
+          authenticated: authState.isAuthenticated,
+          user: authState.user,
+          wsConnected: socket && socket.readyState === WebSocket.OPEN,
+        };
+      
+      case 'SYNC_AUTH':
+        // مزامنة التوثيق من المنصة
+        if (message.token && message.user) {
+          await setStorageData({
+            [STORAGE_KEYS.AUTH_TOKEN]: message.token,
+            [STORAGE_KEYS.USER]: message.user,
+            [STORAGE_KEYS.TENANT]: message.tenant,
+          });
+          // إعادة الاتصال بـ WebSocket
+          await connectWebSocket();
+          return { success: true };
+        }
+        return { success: false, error: 'Missing token or user' };
+      
+      default:
+        return { error: `Unknown external message type: ${message.type}` };
+    }
+  };
+  
+  handleExternalMessage().then(sendResponse);
   return true; // Keep channel open for async response
 });
 
