@@ -601,8 +601,9 @@ async function connectWebSocket() {
     console.log('[Leedz] Connecting to WebSocket...');
     
     // Using native WebSocket with Socket.IO protocol simulation
-    const wsHost = new URL(platformConfig.apiUrl).host;
-    const wsUrl = `ws://${wsHost}/socket.io/?EIO=4&transport=websocket`;
+    const apiUrl = new URL(platformConfig.apiUrl);
+    const wsProtocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${apiUrl.host}/socket.io/?EIO=4&transport=websocket`;
     
     socket = new WebSocket(wsUrl);
     
