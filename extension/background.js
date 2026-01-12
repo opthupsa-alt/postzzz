@@ -505,11 +505,13 @@ async function startPublishingJob(jobId) {
     // Get content to post
     const variant = job.post?.variants?.find(v => v.platform === job.platform);
     const content = variant?.caption || job.post?.content || job.content || '';
+    const mediaAssetIds = variant?.mediaAssetIds || [];
     
     console.log('[Postzzz] Content to post:', content.substring(0, 50) + '...');
+    console.log('[Postzzz] Media assets:', mediaAssetIds.length);
     
     // Fill content based on platform
-    const fillResult = await fillPlatformContent(job.platform, content, activePublishTab.id);
+    const fillResult = await fillPlatformContent(job.platform, content, activePublishTab.id, true, mediaAssetIds);
     
     if (!fillResult.success) {
       console.error('[Postzzz] Failed to fill content:', fillResult.error);
@@ -522,12 +524,15 @@ async function startPublishingJob(jobId) {
   }
 }
 
-async function fillPlatformContent(platform, content, tabId, autoPost = true) {
+async function fillPlatformContent(platform, content, tabId, autoPost = true, mediaAssetIds = []) {
   try {
+    // If there are media assets, notify user to add them manually
+    const hasMedia = mediaAssetIds && mediaAssetIds.length > 0;
+    
     if (platform === 'X') {
       await chrome.scripting.executeScript({
         target: { tabId },
-        func: (text, shouldAutoPost) => {
+        func: (text, shouldAutoPost, hasMediaAttachments) => {
           // Wait for composer to appear
           let attempts = 0;
           const maxAttempts = 20;
@@ -550,6 +555,13 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true) {
                 editor.dispatchEvent(new Event('input', { bubbles: true }));
               }
               console.log('[Postzzz] Content filled successfully');
+              
+              // If there are media attachments, show notification
+              if (hasMediaAttachments) {
+                console.log('[Postzzz] Media attachments detected - user needs to add manually');
+                // Don't auto-post if there are media to add
+                return true;
+              }
               
               // Auto-click Post button if enabled
               if (shouldAutoPost) {
@@ -580,13 +592,13 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true) {
           
           tryFill();
         },
-        args: [content, autoPost],
+        args: [content, autoPost, hasMedia],
       });
-      return { success: true };
+      return { success: true, hasMedia };
     } else if (platform === 'LINKEDIN') {
       await chrome.scripting.executeScript({
         target: { tabId },
-        func: (text, shouldAutoPost) => {
+        func: (text, shouldAutoPost, hasMediaAttachments) => {
           // Click "Start a post" button
           const startPostBtn = document.querySelector('.share-box-feed-entry__trigger') ||
                               document.querySelector('[data-control-name="share.post_entry_point"]') ||
@@ -608,6 +620,12 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true) {
               editor.dispatchEvent(new Event('input', { bubbles: true }));
               console.log('[Postzzz] LinkedIn content filled');
               
+              // Don't auto-post if there are media attachments
+              if (hasMediaAttachments) {
+                console.log('[Postzzz] Media attachments detected - user needs to add manually');
+                return;
+              }
+              
               // Auto-click Post button if enabled
               if (shouldAutoPost) {
                 setTimeout(() => {
@@ -627,9 +645,9 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true) {
             }
           }, 1500);
         },
-        args: [content, autoPost],
+        args: [content, autoPost, hasMedia],
       });
-      return { success: true };
+      return { success: true, hasMedia };
     } else if (platform === 'INSTAGRAM') {
       // Instagram requires different approach - just open the page
       console.log('[Postzzz] Instagram auto-post not supported yet');
@@ -637,7 +655,7 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true) {
     } else if (platform === 'FACEBOOK') {
       await chrome.scripting.executeScript({
         target: { tabId },
-        func: (text, shouldAutoPost) => {
+        func: (text, shouldAutoPost, hasMediaAttachments) => {
           // Click "What's on your mind" to open composer
           const createPostBtn = document.querySelector('[aria-label*="Create a post"]') ||
                                document.querySelector('[aria-label*="What\'s on your mind"]') ||
@@ -656,6 +674,12 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true) {
               document.execCommand('insertText', false, text);
               console.log('[Postzzz] Facebook content filled');
               
+              // Don't auto-post if there are media attachments
+              if (hasMediaAttachments) {
+                console.log('[Postzzz] Media attachments detected - user needs to add manually');
+                return;
+              }
+              
               if (shouldAutoPost) {
                 setTimeout(() => {
                   const postBtn = document.querySelector('[aria-label="Post"]') ||
@@ -670,9 +694,9 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true) {
             }
           }, 2000);
         },
-        args: [content, autoPost],
+        args: [content, autoPost, hasMedia],
       });
-      return { success: true };
+      return { success: true, hasMedia };
     }
     
     return { success: false, error: 'Platform not supported for auto-fill' };
