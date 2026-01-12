@@ -599,21 +599,39 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
     // If there are media assets, we need to handle them
     let mediaBlobs = [];
     if (hasMedia) {
-      console.log('[Postzzz] Fetching media assets:', mediaAssets.length);
+      console.log('[Postzzz] Processing media assets:', mediaAssets.length);
       for (const asset of mediaAssets) {
         if (asset.url) {
           try {
-            // Fetch the media file
-            const response = await fetch(asset.url);
-            const blob = await response.blob();
+            let blob;
+            
+            // Check if it's a data URL (base64)
+            if (asset.url.startsWith('data:')) {
+              // Convert data URL to blob
+              const [header, base64Data] = asset.url.split(',');
+              const mimeType = header.match(/data:([^;]+)/)?.[1] || 'image/png';
+              const byteString = atob(base64Data);
+              const ab = new ArrayBuffer(byteString.length);
+              const ia = new Uint8Array(ab);
+              for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+              }
+              blob = new Blob([ab], { type: mimeType });
+              console.log('[Postzzz] Converted data URL to blob:', mimeType, blob.size, 'bytes');
+            } else {
+              // Fetch the media file from URL
+              const response = await fetch(asset.url);
+              blob = await response.blob();
+            }
+            
             mediaBlobs.push({
               blob,
               type: asset.type,
               mimeType: asset.mimeType || blob.type,
             });
-            console.log('[Postzzz] Fetched media:', asset.type, blob.size, 'bytes');
+            console.log('[Postzzz] Processed media:', asset.type, blob.size, 'bytes');
           } catch (e) {
-            console.error('[Postzzz] Failed to fetch media:', e);
+            console.error('[Postzzz] Failed to process media:', e);
           }
         }
       }
