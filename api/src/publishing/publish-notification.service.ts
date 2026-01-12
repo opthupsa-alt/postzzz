@@ -203,6 +203,8 @@ export class PublishNotificationService {
     status: 'SUCCESS' | 'FAILED',
     errorMessage?: string,
   ): Promise<void> {
+    this.logger.log(`notifyPostPublishResult called: postId=${postId}, platform=${platform}, status=${status}`);
+    
     try {
       // Get post with creator and tenant
       const post = await this.prisma.post.findUnique({
@@ -215,6 +217,7 @@ export class PublishNotificationService {
           createdBy: {
             select: {
               id: true,
+              name: true,
               whatsappPhone: true,
               notifyOnPublish: true,
             },
@@ -227,8 +230,10 @@ export class PublishNotificationService {
         return;
       }
 
+      this.logger.log(`Post found: ${post.title}, Creator: ${post.createdBy.name}, WhatsApp: ${post.createdBy.whatsappPhone}, NotifyOnPublish: ${post.createdBy.notifyOnPublish}`);
+
       // Send notification to post creator
-      await this.sendPublishNotification({
+      const result = await this.sendPublishNotification({
         userId: post.createdBy.id,
         tenantId: post.tenantId,
         postTitle: post.title || 'منشور',
@@ -237,6 +242,8 @@ export class PublishNotificationService {
         errorMessage,
         publishedAt: new Date(),
       });
+      
+      this.logger.log(`Notification result: ${result}`);
     } catch (error: any) {
       this.logger.error(`Failed to notify for post ${postId}: ${error.message}`);
     }

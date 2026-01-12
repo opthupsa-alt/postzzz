@@ -1092,14 +1092,26 @@ function stopScheduler() {
 async function checkScheduledJobs() {
   try {
     const authState = await getAuthState();
-    if (!authState.isAuthenticated) return;
+    if (!authState.isAuthenticated) {
+      console.log('[Postzzz] Scheduler: Not authenticated, skipping');
+      return;
+    }
+    
+    console.log('[Postzzz] Scheduler: Checking for scheduled jobs...');
     
     // Get jobs that are due now (scheduledAt <= now)
     const now = new Date().toISOString();
+    console.log('[Postzzz] Scheduler: Current time:', now);
+    
     const response = await apiRequest(`/publishing/jobs?status=QUEUED&to=${encodeURIComponent(now)}`);
+    console.log('[Postzzz] Scheduler: API response:', JSON.stringify(response).substring(0, 200));
+    
     const jobs = response?.data || response || [];
     
-    if (!Array.isArray(jobs) || jobs.length === 0) return;
+    if (!Array.isArray(jobs) || jobs.length === 0) {
+      console.log('[Postzzz] Scheduler: No jobs found');
+      return;
+    }
     
     console.log(`[Postzzz] Found ${jobs.length} scheduled jobs ready to publish`);
     
@@ -1109,7 +1121,7 @@ async function checkScheduledJobs() {
     
     if (!deviceId) {
       console.log('[Postzzz] No device ID, registering device first');
-      await registerDevice();
+      await registerDeviceIfNeeded();
       return;
     }
     

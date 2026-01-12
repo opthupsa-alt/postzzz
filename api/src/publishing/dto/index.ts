@@ -15,6 +15,10 @@ export class StartJobDto {
 }
 
 export class CompleteJobDto {
+  @IsOptional()
+  @IsUUID()
+  deviceId?: string;
+
   @IsEnum(['SUCCEEDED', 'FAILED', 'NEEDS_LOGIN'])
   status: 'SUCCEEDED' | 'FAILED' | 'NEEDS_LOGIN';
 
