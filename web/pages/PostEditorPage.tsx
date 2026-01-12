@@ -8,8 +8,7 @@ import {
 import PageHeader from '../components/PageHeader';
 import { getClients, Client, SocialPlatform, PLATFORM_CONFIG, ALL_PLATFORMS } from '../lib/clients-api';
 import { 
-  getPost, createPost, updatePost, upsertVariants, 
-  submitForApproval, approvePost, schedulePost,
+  getPost, createPost, updatePost, upsertVariants, schedulePost,
   Post, CreateVariantDto, POST_STATUS_CONFIG
 } from '../lib/posts-api';
 import { uploadMedia, MediaAsset } from '../lib/media-api';
@@ -180,9 +179,19 @@ const PostEditorPage: React.FC = () => {
     }));
   };
 
-  const handleSaveDraft = async () => {
+  const handleSaveDraft = async (shouldSchedule: boolean = false) => {
     if (!selectedClient) {
       setError('يرجى اختيار العميل');
+      return;
+    }
+
+    if (selectedPlatforms.length === 0) {
+      setError('يرجى اختيار منصة واحدة على الأقل');
+      return;
+    }
+
+    if (shouldSchedule && !scheduledAt) {
+      setError('يرجى تحديد وقت الجدولة');
       return;
     }
 
@@ -191,12 +200,27 @@ const PostEditorPage: React.FC = () => {
 
     try {
       let savedPost: Post;
+      const scheduledAtISO = scheduledAt ? new Date(scheduledAt).toISOString() : undefined;
 
       if (isEdit && postId) {
         savedPost = await updatePost(postId, {
           title: title || undefined,
-          scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+          scheduledAt: scheduledAtISO,
         });
+        
+        // Update variants
+        const variants: CreateVariantDto[] = selectedPlatforms.map(platform => ({
+          platform,
+          caption: variantContents[platform]?.caption || '',
+          hashtags: variantContents[platform]?.hashtags || '',
+          mediaAssetIds: variantContents[platform]?.mediaAssets?.map(a => a.id) || [],
+        }));
+        await upsertVariants(postId, variants);
+        
+        // Schedule if requested
+        if (shouldSchedule) {
+          await schedulePost(postId, scheduledAtISO);
+        }
       } else {
         const variants: CreateVariantDto[] = selectedPlatforms.map(platform => ({
           platform,
@@ -208,77 +232,19 @@ const PostEditorPage: React.FC = () => {
         savedPost = await createPost({
           clientId: selectedClient,
           title: title || undefined,
-          scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+          scheduledAt: scheduledAtISO,
           variants,
         });
-      }
-
-      // Update variants if editing
-      if (isEdit && postId) {
-        const variants: CreateVariantDto[] = selectedPlatforms.map(platform => ({
-          platform,
-          caption: variantContents[platform]?.caption || '',
-          hashtags: variantContents[platform]?.hashtags || '',
-          mediaAssetIds: variantContents[platform]?.mediaAssets?.map(a => a.id) || [],
-        }));
-        await upsertVariants(postId, variants);
+        
+        // Schedule the new post if requested
+        if (shouldSchedule && savedPost.id) {
+          await schedulePost(savedPost.id, scheduledAtISO);
+        }
       }
 
       navigate('/app/posts');
     } catch (err: any) {
       setError(err.message || 'حدث خطأ أثناء حفظ المنشور');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSubmitApproval = async () => {
-    if (!postId) return;
-    setSaving(true);
-    try {
-      await submitForApproval(postId);
-      navigate('/app/posts');
-    } catch (err: any) {
-      setError(err.message || 'حدث خطأ');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleApprove = async () => {
-    if (!postId) return;
-    setSaving(true);
-    try {
-      await approvePost(postId);
-      navigate('/app/posts');
-    } catch (err: any) {
-      setError(err.message || 'حدث خطأ');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSchedule = async () => {
-    if (!selectedClient || selectedPlatforms.length === 0) {
-      setError('يرجى اختيار العميل والمنصات');
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-
-    try {
-      // Save first if new
-      if (!isEdit) {
-        await handleSaveDraft();
-        return;
-      }
-
-      // Schedule existing post
-      await schedulePost(postId!, scheduledAt ? new Date(scheduledAt).toISOString() : undefined);
-      navigate('/app/posts');
-    } catch (err: any) {
-      setError(err.message || 'حدث خطأ أثناء جدولة المنشور');
     } finally {
       setSaving(false);
     }
@@ -549,47 +515,26 @@ const PostEditorPage: React.FC = () => {
 
           {/* Actions */}
           <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-6 space-y-3">
+            {/* زر الجدولة الرئيسي - يظهر دائماً إذا كان هناك وقت جدولة */}
+            {scheduledAt && (
+              <button
+                onClick={() => handleSaveDraft(true)}
+                disabled={saving || !selectedClient || selectedPlatforms.length === 0}
+                className="w-full bg-green-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Clock size={20} />
+                {saving ? 'جاري الجدولة...' : 'جدولة ونشر'}
+              </button>
+            )}
+
             <button
-              onClick={handleSaveDraft}
+              onClick={() => handleSaveDraft(false)}
               disabled={saving || !selectedClient}
               className="w-full bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Save size={20} />
-              {saving ? 'جاري الحفظ...' : 'حفظ المنشور'}
+              {saving ? 'جاري الحفظ...' : 'حفظ كمسودة'}
             </button>
-
-            {isEdit && post?.status === 'DRAFT' && (
-              <button
-                onClick={handleSubmitApproval}
-                disabled={saving}
-                className="w-full bg-yellow-500 text-white px-6 py-3 rounded-xl font-bold hover:bg-yellow-600 transition-colors flex items-center justify-center gap-2"
-              >
-                <Send size={20} />
-                إرسال للموافقة
-              </button>
-            )}
-
-            {isEdit && (post?.status === 'DRAFT' || post?.status === 'PENDING_APPROVAL') && (
-              <button
-                onClick={handleApprove}
-                disabled={saving}
-                className="w-full bg-green-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <CheckCircle size={20} />
-                الموافقة
-              </button>
-            )}
-
-            {isEdit && post?.status === 'APPROVED' && (
-              <button
-                onClick={handleSchedule}
-                disabled={saving || !scheduledAt}
-                className="w-full bg-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                <Clock size={20} />
-                جدولة المنشور
-              </button>
-            )}
           </div>
 
           {/* Preview */}
