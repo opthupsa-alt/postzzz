@@ -1182,6 +1182,12 @@ async function checkScheduledJobs() {
     
     // Process jobs one by one
     for (const job of jobs) {
+      // Skip already processed jobs
+      if (processedJobIds.has(job.id)) {
+        console.log(`[Postzzz] Job ${job.id} already processed, skipping`);
+        continue;
+      }
+      
       console.log(`[Postzzz] Processing job:`, job.id, job.platform, job.scheduledAt);
       
       // Check if job is due
@@ -1258,14 +1264,25 @@ async function checkScheduledJobs() {
         const result = await startPublishingJob(job.id);
         console.log('[Postzzz] startPublishingJob result:', result);
         
+        // Mark job as processed locally to prevent re-processing
+        if (!processedJobIds) {
+          processedJobIds = new Set();
+        }
+        processedJobIds.add(job.id);
+        
         // Wait before processing next job
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise(resolve => setTimeout(resolve, 10000));
+      } else {
+        console.log(`[Postzzz] Job ${job.id} not yet due, skipping`);
       }
     }
   } catch (error) {
     console.error('[Postzzz] Scheduler error:', error);
   }
 }
+
+// Track processed jobs to prevent duplicates
+let processedJobIds = new Set();
 
 // ==================== Startup ====================
 chrome.runtime.onInstalled.addListener(async () => {
