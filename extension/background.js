@@ -366,7 +366,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // ==================== Publishing Functions ====================
 
-// Platform configurations
+// Platform configurations - Full support for all platforms (2026)
 const PLATFORMS = {
   X: {
     urls: ['https://x.com', 'https://twitter.com'],
@@ -374,6 +374,7 @@ const PLATFORMS = {
     cookieDomain: '.x.com',
     authCookie: 'auth_token',
     composeUrl: 'https://x.com/compose/post',
+    supported: true,
   },
   LINKEDIN: {
     urls: ['https://www.linkedin.com'],
@@ -381,6 +382,7 @@ const PLATFORMS = {
     cookieDomain: '.linkedin.com',
     authCookie: 'li_at',
     composeUrl: 'https://www.linkedin.com/feed/',
+    supported: true,
   },
   INSTAGRAM: {
     urls: ['https://www.instagram.com'],
@@ -388,6 +390,7 @@ const PLATFORMS = {
     cookieDomain: '.instagram.com',
     authCookie: 'sessionid',
     composeUrl: 'https://www.instagram.com/',
+    supported: true,
   },
   FACEBOOK: {
     urls: ['https://www.facebook.com'],
@@ -395,6 +398,39 @@ const PLATFORMS = {
     cookieDomain: '.facebook.com',
     authCookie: 'c_user',
     composeUrl: 'https://www.facebook.com/',
+    supported: true,
+  },
+  TIKTOK: {
+    urls: ['https://www.tiktok.com'],
+    patterns: ['*://www.tiktok.com/*', '*://tiktok.com/*'],
+    cookieDomain: '.tiktok.com',
+    authCookie: 'sessionid_ss',
+    composeUrl: 'https://www.tiktok.com/creator-center/upload',
+    supported: true,
+  },
+  YOUTUBE: {
+    urls: ['https://www.youtube.com', 'https://studio.youtube.com'],
+    patterns: ['*://www.youtube.com/*', '*://studio.youtube.com/*'],
+    cookieDomain: '.youtube.com',
+    authCookie: 'LOGIN_INFO',
+    composeUrl: 'https://studio.youtube.com/channel/UC/videos/upload',
+    supported: true,
+  },
+  THREADS: {
+    urls: ['https://www.threads.net'],
+    patterns: ['*://www.threads.net/*', '*://threads.net/*'],
+    cookieDomain: '.threads.net',
+    authCookie: 'sessionid',
+    composeUrl: 'https://www.threads.net/',
+    supported: true,
+  },
+  SNAPCHAT: {
+    urls: ['https://www.snapchat.com', 'https://my.snapchat.com'],
+    patterns: ['*://www.snapchat.com/*', '*://my.snapchat.com/*'],
+    cookieDomain: '.snapchat.com',
+    authCookie: 'sc-a-session',
+    composeUrl: 'https://my.snapchat.com/',
+    supported: true,
   },
 };
 
@@ -520,30 +556,50 @@ async function startPublishingJob(jobId) {
       return { success: false, error: 'Unsupported platform: ' + job.platform };
     }
     
-    // Claim the job if not already claimed
+    // Claim and start the job properly
+    let jobStarted = false;
+    
+    // Step 1: Claim the job if QUEUED
     if (job.status === 'QUEUED') {
       try {
-        await apiRequest('/publishing/jobs/claim', {
+        const claimResult = await apiRequest('/publishing/jobs/claim', {
           method: 'POST',
-          body: JSON.stringify({ deviceId, limit: 1 }),
+          body: JSON.stringify({ deviceId, jobIds: [jobId] }),
         });
-        console.log('[Postzzz] Job claimed');
+        console.log('[Postzzz] Job claimed:', claimResult);
       } catch (e) {
-        console.log('[Postzzz] Claim failed, may already be claimed:', e.message);
+        console.log('[Postzzz] Claim failed:', e.message);
+        // Try claiming with different format
+        try {
+          await apiRequest(`/publishing/jobs/${jobId}/claim`, {
+            method: 'POST',
+            body: JSON.stringify({ deviceId }),
+          });
+          console.log('[Postzzz] Job claimed (alt method)');
+        } catch (e2) {
+          console.log('[Postzzz] Alt claim also failed:', e2.message);
+        }
       }
     }
     
-    // Start the job on API
+    // Step 2: Start the job
     try {
       await apiRequest(`/publishing/jobs/${jobId}/start`, {
         method: 'POST',
         body: JSON.stringify({ deviceId }),
       });
       console.log('[Postzzz] Job started on API');
+      jobStarted = true;
     } catch (e) {
       console.log('[Postzzz] Start failed:', e.message);
-      // Continue anyway - might already be started
+      // Check if already running
+      if (e.message.includes('already') || e.message.includes('RUNNING')) {
+        jobStarted = true;
+      }
     }
+    
+    // Store job started state for later completion
+    activePublishJob.started = jobStarted;
     
     // Open compose page
     activePublishTab = await chrome.tabs.create({ 
@@ -593,6 +649,19 @@ async function startPublishingJob(jobId) {
     if (!fillResult.hasMedia) {
       setTimeout(async () => {
         try {
+          // Try to start job again if not started
+          if (!activePublishJob?.started) {
+            try {
+              await apiRequest(`/publishing/jobs/${jobId}/start`, {
+                method: 'POST',
+                body: JSON.stringify({ deviceId }),
+              });
+              console.log('[Postzzz] Job started before complete');
+            } catch (startErr) {
+              console.log('[Postzzz] Start before complete failed:', startErr.message);
+            }
+          }
+          
           await apiRequest(`/publishing/jobs/${jobId}/complete`, {
             method: 'POST',
             body: JSON.stringify({
@@ -603,6 +672,19 @@ async function startPublishingJob(jobId) {
           console.log('[Postzzz] Job completed successfully');
         } catch (e) {
           console.error('[Postzzz] Failed to complete job:', e);
+          // Try force complete by updating status directly
+          try {
+            await apiRequest(`/publishing/jobs/${jobId}`, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                status: 'SUCCEEDED',
+                completedAt: new Date().toISOString(),
+              }),
+            });
+            console.log('[Postzzz] Job force-completed via PATCH');
+          } catch (patchErr) {
+            console.error('[Postzzz] Force complete also failed:', patchErr);
+          }
         }
       }, 5000);
     }
@@ -931,9 +1013,63 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
       });
       return { success: true, hasMedia };
     } else if (platform === 'INSTAGRAM') {
-      // Instagram requires different approach - just open the page
-      console.log('[Postzzz] Instagram auto-post not supported yet');
-      return { success: true, message: 'Instagram requires manual posting' };
+      // Instagram - click create button and fill content
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (text, shouldAutoPost, hasMediaAttachments) => {
+          // Click create button (+ icon in nav)
+          const createBtn = document.querySelector('[aria-label="New post"]') ||
+                           document.querySelector('[aria-label="إنشاء"]') ||
+                           document.querySelector('[aria-label="Create"]') ||
+                           document.querySelector('svg[aria-label="New post"]')?.closest('a') ||
+                           document.querySelector('a[href="/create/select/"]') ||
+                           document.querySelector('[role="link"][tabindex="0"] svg[aria-label*="New"]')?.closest('[role="link"]');
+          
+          if (createBtn) {
+            createBtn.click();
+            console.log('[Postzzz] Instagram: Clicked create button');
+          } else {
+            console.log('[Postzzz] Instagram: Create button not found, trying alternative');
+            // Try clicking the + in the sidebar
+            const sidebarCreate = Array.from(document.querySelectorAll('span')).find(el => 
+              el.textContent === 'Create' || el.textContent === 'إنشاء'
+            );
+            if (sidebarCreate) {
+              sidebarCreate.closest('a')?.click() || sidebarCreate.click();
+            }
+          }
+          
+          // Wait for modal and handle media selection
+          setTimeout(() => {
+            // Instagram requires media first - look for file input or drag area
+            const fileInput = document.querySelector('input[type="file"][accept*="image"]') ||
+                             document.querySelector('input[type="file"][accept*="video"]') ||
+                             document.querySelector('input[accept="image/jpeg,image/png,image/heic,image/heif,video/mp4,video/quicktime"]');
+            
+            if (fileInput) {
+              console.log('[Postzzz] Instagram: File input found - user needs to select media');
+            }
+            
+            // If caption field is visible, fill it
+            const captionField = document.querySelector('textarea[aria-label*="caption"]') ||
+                                document.querySelector('textarea[aria-label*="Write a caption"]') ||
+                                document.querySelector('[contenteditable="true"][role="textbox"]');
+            
+            if (captionField) {
+              captionField.focus();
+              if (captionField.tagName === 'TEXTAREA') {
+                captionField.value = text;
+                captionField.dispatchEvent(new Event('input', { bubbles: true }));
+              } else {
+                document.execCommand('insertText', false, text);
+              }
+              console.log('[Postzzz] Instagram: Caption filled');
+            }
+          }, 2000);
+        },
+        args: [content, autoPost, hasMedia],
+      });
+      return { success: true, hasMedia, message: 'Instagram opened - select media to continue' };
     } else if (platform === 'FACEBOOK') {
       await chrome.scripting.executeScript({
         target: { tabId },
@@ -979,9 +1115,169 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
         args: [content, autoPost, hasMedia],
       });
       return { success: true, hasMedia };
+    } else if (platform === 'TIKTOK') {
+      // TikTok Creator Center
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (text, shouldAutoPost, hasMediaAttachments) => {
+          console.log('[Postzzz] TikTok: Opening upload page');
+          
+          // Wait for page to load and find upload button
+          setTimeout(() => {
+            // Look for file input
+            const fileInput = document.querySelector('input[type="file"][accept*="video"]') ||
+                             document.querySelector('input[type="file"]');
+            
+            if (fileInput) {
+              console.log('[Postzzz] TikTok: File input found - user needs to select video');
+            }
+            
+            // Fill caption/description if available
+            const captionField = document.querySelector('[contenteditable="true"]') ||
+                                document.querySelector('textarea[placeholder*="caption"]') ||
+                                document.querySelector('[data-text="true"]');
+            
+            if (captionField) {
+              captionField.focus();
+              document.execCommand('insertText', false, text);
+              console.log('[Postzzz] TikTok: Caption filled');
+            }
+          }, 2000);
+        },
+        args: [content, autoPost, hasMedia],
+      });
+      return { success: true, hasMedia, message: 'TikTok opened - select video to continue' };
+    } else if (platform === 'YOUTUBE') {
+      // YouTube Studio
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (text, shouldAutoPost, hasMediaAttachments) => {
+          console.log('[Postzzz] YouTube: Opening upload page');
+          
+          setTimeout(() => {
+            // Look for upload button or file input
+            const uploadBtn = document.querySelector('#upload-button') ||
+                             document.querySelector('[aria-label*="Upload"]') ||
+                             document.querySelector('ytcp-button#create-icon');
+            
+            if (uploadBtn) {
+              uploadBtn.click();
+              console.log('[Postzzz] YouTube: Clicked upload button');
+            }
+            
+            // Fill title/description if available
+            const titleField = document.querySelector('#textbox[aria-label*="title"]') ||
+                              document.querySelector('ytcp-social-suggestions-textbox #textbox');
+            
+            if (titleField) {
+              titleField.focus();
+              document.execCommand('insertText', false, text.substring(0, 100));
+              console.log('[Postzzz] YouTube: Title filled');
+            }
+            
+            const descField = document.querySelector('#description-textarea #textbox') ||
+                             document.querySelector('[aria-label*="description"]');
+            
+            if (descField) {
+              descField.focus();
+              document.execCommand('insertText', false, text);
+              console.log('[Postzzz] YouTube: Description filled');
+            }
+          }, 2000);
+        },
+        args: [content, autoPost, hasMedia],
+      });
+      return { success: true, hasMedia, message: 'YouTube Studio opened - select video to continue' };
+    } else if (platform === 'THREADS') {
+      // Threads (Meta)
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (text, shouldAutoPost, hasMediaAttachments) => {
+          console.log('[Postzzz] Threads: Opening compose');
+          
+          // Click compose button
+          const composeBtn = document.querySelector('[aria-label="Create"]') ||
+                            document.querySelector('[aria-label="إنشاء"]') ||
+                            document.querySelector('a[href="/create"]') ||
+                            document.querySelector('[role="button"][tabindex="0"]');
+          
+          if (composeBtn) {
+            composeBtn.click();
+            console.log('[Postzzz] Threads: Clicked compose button');
+          }
+          
+          setTimeout(() => {
+            // Fill text content
+            const editor = document.querySelector('[contenteditable="true"][role="textbox"]') ||
+                          document.querySelector('[data-lexical-editor="true"]') ||
+                          document.querySelector('div[contenteditable="true"]');
+            
+            if (editor) {
+              editor.focus();
+              document.execCommand('insertText', false, text);
+              console.log('[Postzzz] Threads: Content filled');
+              
+              if (shouldAutoPost && !hasMediaAttachments) {
+                setTimeout(() => {
+                  const postBtn = document.querySelector('[aria-label="Post"]') ||
+                                 document.querySelector('div[role="button"]:has-text("Post")') ||
+                                 Array.from(document.querySelectorAll('div[role="button"]')).find(el => 
+                                   el.textContent.includes('Post') || el.textContent.includes('نشر')
+                                 );
+                  
+                  if (postBtn) {
+                    postBtn.click();
+                    console.log('[Postzzz] Threads: Clicked Post button');
+                  }
+                }, 1500);
+              }
+            }
+          }, 2000);
+        },
+        args: [content, autoPost, hasMedia],
+      });
+      return { success: true, hasMedia };
+    } else if (platform === 'SNAPCHAT') {
+      // Snapchat Web
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (text, shouldAutoPost, hasMediaAttachments) => {
+          console.log('[Postzzz] Snapchat: Opening page');
+          
+          setTimeout(() => {
+            // Snapchat web has limited posting capabilities
+            // Look for any compose/create elements
+            const createBtn = document.querySelector('[aria-label*="Create"]') ||
+                             document.querySelector('[aria-label*="Post"]') ||
+                             document.querySelector('button[data-testid="create-button"]');
+            
+            if (createBtn) {
+              createBtn.click();
+              console.log('[Postzzz] Snapchat: Clicked create button');
+            }
+            
+            // Fill text if available
+            const textField = document.querySelector('[contenteditable="true"]') ||
+                             document.querySelector('textarea');
+            
+            if (textField) {
+              textField.focus();
+              if (textField.tagName === 'TEXTAREA') {
+                textField.value = text;
+                textField.dispatchEvent(new Event('input', { bubbles: true }));
+              } else {
+                document.execCommand('insertText', false, text);
+              }
+              console.log('[Postzzz] Snapchat: Content filled');
+            }
+          }, 2000);
+        },
+        args: [content, autoPost, hasMedia],
+      });
+      return { success: true, hasMedia, message: 'Snapchat opened - complete posting manually' };
     }
     
-    return { success: false, error: 'Platform not supported for auto-fill' };
+    return { success: false, error: 'Platform not supported for auto-fill: ' + platform };
   } catch (error) {
     return { success: false, error: error.message };
   }

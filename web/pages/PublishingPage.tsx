@@ -28,6 +28,13 @@ const PublishingPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    
+    // Auto-refresh every 5 seconds for real-time updates
+    const interval = setInterval(() => {
+      loadJobs();
+    }, 5000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
