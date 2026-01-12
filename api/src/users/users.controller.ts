@@ -83,4 +83,22 @@ export class UsersController {
   ) {
     return this.usersService.updateProfile(user.userId, data);
   }
+
+  // Alias endpoints for /users/profile
+  @Get('profile')
+  @ApiOperation({ summary: 'Get current user profile (alias)' })
+  @ApiResponse({ status: 200, description: 'Current user profile' })
+  async getProfileAlias(@CurrentUser() user: CurrentUserPayload) {
+    return this.usersService.getProfile(user.userId);
+  }
+
+  @Patch('profile')
+  @ApiOperation({ summary: 'Update current user profile (alias)' })
+  @ApiResponse({ status: 200, description: 'Profile updated' })
+  async updateProfileAlias(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() data: { name?: string; whatsappPhone?: string; notifyOnPublish?: boolean },
+  ) {
+    return this.usersService.updateProfile(user.userId, data);
+  }
 }
