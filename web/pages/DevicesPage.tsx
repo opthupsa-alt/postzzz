@@ -88,7 +88,7 @@ const DevicesPage: React.FC = () => {
         subtitle="إدارة أجهزة Chrome Extension المتصلة"
         actions={
           <button 
-            onClick={loadDevices}
+            onClick={loadData}
             className="bg-gray-100 text-gray-700 px-4 py-3 rounded-xl font-bold hover:bg-gray-200 transition-colors flex items-center gap-2"
           >
             <RefreshCw size={18} />
