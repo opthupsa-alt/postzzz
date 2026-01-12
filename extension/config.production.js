@@ -4,7 +4,7 @@
 // هذا الملف للإنتاج - انسخه إلى config.js عند النشر على Chrome Web Store
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const LEEDZ_CONFIG = {
+var LEEDZ_CONFIG = {
   // URLs - Production
   API_URL: 'https://leedz-api.onrender.com',
   WEB_URL: 'https://leedz.vercel.app',

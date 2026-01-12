@@ -134,7 +134,7 @@ VITE_API_BASE_URL=$ApiUrl
 // لا تعدّل هذا الملف مباشرة - عدّل .env.master وشغّل sync-and-start.ps1
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const LEEDZ_CONFIG = {
+var LEEDZ_CONFIG = {
   // URLs
   API_URL: '$ApiUrl',
   WEB_URL: '$WebUrl',
