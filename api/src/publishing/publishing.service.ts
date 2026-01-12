@@ -112,6 +112,21 @@ export class PublishingService {
       throw new NotFoundException('Job not found');
     }
 
+    // Fetch media assets for variants
+    if (job.post?.variants) {
+      for (const variant of job.post.variants) {
+        if (variant.mediaAssetIds && Array.isArray(variant.mediaAssetIds) && variant.mediaAssetIds.length > 0) {
+          const mediaAssets = await this.prisma.mediaAsset.findMany({
+            where: { id: { in: variant.mediaAssetIds as string[] } },
+            select: { id: true, url: true, type: true, mimeType: true },
+          });
+          (variant as any).mediaAssets = mediaAssets;
+        } else {
+          (variant as any).mediaAssets = [];
+        }
+      }
+    }
+
     return job;
   }
 

@@ -539,13 +539,13 @@ async function startPublishingJob(jobId) {
     // Get content to post
     const variant = job.post?.variants?.find(v => v.platform === job.platform);
     const content = variant?.caption || job.post?.content || job.content || '';
-    const mediaAssetIds = variant?.mediaAssetIds || [];
+    const mediaAssets = variant?.mediaAssets || [];
     
     console.log('[Postzzz] Content to post:', content.substring(0, 50) + '...');
-    console.log('[Postzzz] Media assets:', mediaAssetIds.length);
+    console.log('[Postzzz] Media assets:', mediaAssets.length);
     
     // Fill content based on platform
-    const fillResult = await fillPlatformContent(job.platform, content, activePublishTab.id, true, mediaAssetIds);
+    const fillResult = await fillPlatformContent(job.platform, content, activePublishTab.id, true, mediaAssets);
     
     if (!fillResult.success) {
       console.error('[Postzzz] Failed to fill content:', fillResult.error);
@@ -591,12 +591,108 @@ async function startPublishingJob(jobId) {
   }
 }
 
-async function fillPlatformContent(platform, content, tabId, autoPost = true, mediaAssetIds = []) {
+async function fillPlatformContent(platform, content, tabId, autoPost = true, mediaAssets = []) {
   try {
-    // If there are media assets, notify user to add them manually
-    const hasMedia = mediaAssetIds && mediaAssetIds.length > 0;
+    // Check if there are media assets with URLs
+    const hasMedia = mediaAssets && mediaAssets.length > 0;
+    
+    // If there are media assets, we need to handle them
+    let mediaBlobs = [];
+    if (hasMedia) {
+      console.log('[Postzzz] Fetching media assets:', mediaAssets.length);
+      for (const asset of mediaAssets) {
+        if (asset.url) {
+          try {
+            // Fetch the media file
+            const response = await fetch(asset.url);
+            const blob = await response.blob();
+            mediaBlobs.push({
+              blob,
+              type: asset.type,
+              mimeType: asset.mimeType || blob.type,
+            });
+            console.log('[Postzzz] Fetched media:', asset.type, blob.size, 'bytes');
+          } catch (e) {
+            console.error('[Postzzz] Failed to fetch media:', e);
+          }
+        }
+      }
+    }
     
     if (platform === 'X') {
+      // If we have media, we need to upload it via file input
+      if (mediaBlobs.length > 0) {
+        // First, inject the media files
+        for (const media of mediaBlobs) {
+          try {
+            // Convert blob to base64 for transfer to content script
+            const reader = new FileReader();
+            const base64 = await new Promise((resolve, reject) => {
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = reject;
+              reader.readAsDataURL(media.blob);
+            });
+            
+            await chrome.scripting.executeScript({
+              target: { tabId },
+              func: async (base64Data, mimeType) => {
+                // Wait for file input to be available
+                const waitForInput = () => new Promise((resolve) => {
+                  let attempts = 0;
+                  const check = () => {
+                    const fileInput = document.querySelector('input[type="file"][accept*="image"]') ||
+                                     document.querySelector('input[type="file"][accept*="video"]') ||
+                                     document.querySelector('input[type="file"][data-testid="fileInput"]') ||
+                                     document.querySelector('input[type="file"]');
+                    if (fileInput) {
+                      resolve(fileInput);
+                    } else if (attempts++ < 20) {
+                      setTimeout(check, 500);
+                    } else {
+                      resolve(null);
+                    }
+                  };
+                  check();
+                });
+                
+                const fileInput = await waitForInput();
+                if (!fileInput) {
+                  console.error('[Postzzz] File input not found');
+                  return false;
+                }
+                
+                // Convert base64 to File
+                const byteString = atob(base64Data.split(',')[1]);
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                for (let i = 0; i < byteString.length; i++) {
+                  ia[i] = byteString.charCodeAt(i);
+                }
+                const blob = new Blob([ab], { type: mimeType });
+                const file = new File([blob], 'media.' + mimeType.split('/')[1], { type: mimeType });
+                
+                // Create a DataTransfer to set files
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                fileInput.files = dt.files;
+                
+                // Trigger change event
+                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                console.log('[Postzzz] Media file added to input');
+                return true;
+              },
+              args: [base64, media.mimeType],
+            });
+            
+            // Wait for upload to process
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } catch (e) {
+            console.error('[Postzzz] Failed to inject media:', e);
+          }
+        }
+      }
+      
+      // Now fill the text content
       await chrome.scripting.executeScript({
         target: { tabId },
         func: (text, shouldAutoPost, hasMediaAttachments) => {
@@ -623,14 +719,7 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
               }
               console.log('[Postzzz] Content filled successfully');
               
-              // If there are media attachments, show notification
-              if (hasMediaAttachments) {
-                console.log('[Postzzz] Media attachments detected - user needs to add manually');
-                // Don't auto-post if there are media to add
-                return true;
-              }
-              
-              // Auto-click Post button if enabled
+              // Auto-click Post button if enabled (even with media, since we uploaded it)
               if (shouldAutoPost) {
                 setTimeout(() => {
                   const postBtn = document.querySelector('[data-testid="tweetButton"]') ||
@@ -644,7 +733,7 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
                   } else {
                     console.log('[Postzzz] Post button not found or disabled');
                   }
-                }, 1500);
+                }, 2000);
               }
               return true;
             }
