@@ -1,15 +1,24 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   User, Shield, Bell, CreditCard, Smartphone, Mail, Save, Lock, 
   ShieldCheck, Zap, History, Globe, CheckCircle2, ChevronLeft,
   Key, Database, LayoutGrid, Code, ExternalLink, Activity,
-  ArrowLeft, Copy, Trash2, Plus, X, Loader2
+  ArrowLeft, Copy, Trash2, Plus, X, Loader2, RefreshCw, Unplug
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { NotificationPreferences } from '../types';
 import PageHeader from '../components/PageHeader';
 import { showToast } from '../components/NotificationToast';
+import { apiRequest } from '../lib/api';
+
+// WhatsApp connection status type
+interface WhatsAppStatus {
+  status: 'disconnected' | 'qr_ready' | 'connecting' | 'connected' | 'failed';
+  qrCode: string | null;
+  phoneNumber: string | null;
+  error: string | null;
+}
 
 const SettingsPage: React.FC = () => {
   const { 
@@ -28,6 +37,109 @@ const SettingsPage: React.FC = () => {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [newKeyLabel, setNewKeyLabel] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  
+  // WhatsApp State
+  const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>({
+    status: 'disconnected',
+    qrCode: null,
+    phoneNumber: null,
+    error: null,
+  });
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [whatsappPhone, setWhatsappPhone] = useState('');
+  const [notifyOnPublish, setNotifyOnPublish] = useState(true);
+
+  // Fetch WhatsApp status on mount
+  useEffect(() => {
+    fetchWhatsAppStatus();
+  }, []);
+
+  const fetchWhatsAppStatus = async () => {
+    try {
+      const response = await apiRequest('/whatsapp/web/status') as WhatsAppStatus;
+      if (response) {
+        setWhatsappStatus(response);
+      }
+    } catch (error) {
+      console.error('Failed to fetch WhatsApp status:', error);
+    }
+  };
+
+  const handleStartWhatsAppConnection = async () => {
+    setIsConnecting(true);
+    try {
+      const response = await apiRequest('/whatsapp/web/initialize', {
+        method: 'POST',
+      }) as { success: boolean; message: string };
+      
+      if (response?.success) {
+        showToast('INFO', 'جاري الربط', 'انتظر ظهور QR Code...');
+        // Poll for QR code
+        pollForQRCode();
+      } else {
+        showToast('ERROR', 'خطأ', response?.message || 'فشل بدء الربط');
+        setIsConnecting(false);
+      }
+    } catch (error: any) {
+      showToast('ERROR', 'خطأ', error.message || 'فشل الاتصال بالخادم');
+      setIsConnecting(false);
+    }
+  };
+
+  const pollForQRCode = () => {
+    let attempts = 0;
+    const maxAttempts = 30; // 30 seconds
+    
+    const interval = setInterval(async () => {
+      attempts++;
+      
+      try {
+        const response = await apiRequest('/whatsapp/web/status') as WhatsAppStatus;
+        setWhatsappStatus(response);
+        
+        if (response.status === 'qr_ready' || response.status === 'connected') {
+          clearInterval(interval);
+          setIsConnecting(false);
+          
+          if (response.status === 'connected') {
+            showToast('SUCCESS', 'تم الربط', 'تم ربط الواتساب بنجاح!');
+          }
+        } else if (response.status === 'failed') {
+          clearInterval(interval);
+          setIsConnecting(false);
+          showToast('ERROR', 'فشل الربط', response.error || 'حدث خطأ');
+        }
+      } catch (error) {
+        console.error('Poll error:', error);
+      }
+      
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
+        setIsConnecting(false);
+        showToast('ERROR', 'انتهت المهلة', 'حاول مرة أخرى');
+      }
+    }, 1000);
+  };
+
+  const handleDisconnectWhatsApp = async () => {
+    try {
+      const response = await apiRequest('/whatsapp/web/disconnect', {
+        method: 'POST',
+      }) as { success: boolean; message: string };
+      
+      if (response?.success) {
+        setWhatsappStatus({
+          status: 'disconnected',
+          qrCode: null,
+          phoneNumber: null,
+          error: null,
+        });
+        showToast('SUCCESS', 'تم قطع الاتصال', 'تم فصل الواتساب بنجاح');
+      }
+    } catch (error: any) {
+      showToast('ERROR', 'خطأ', error.message || 'فشل قطع الاتصال');
+    }
+  };
 
   const handleSave = () => {
     setIsSaving(true);
@@ -260,7 +372,7 @@ const SettingsPage: React.FC = () => {
                 <div className="p-8 bg-green-50/50 border border-green-100 rounded-[2rem] space-y-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="p-4 bg-green-500 text-white rounded-2xl">
+                      <div className={`p-4 rounded-2xl ${whatsappStatus.status === 'connected' ? 'bg-green-500' : 'bg-gray-400'} text-white`}>
                         <Smartphone size={24} />
                       </div>
                       <div>
@@ -268,25 +380,85 @@ const SettingsPage: React.FC = () => {
                         <p className="text-sm text-gray-500 font-bold">اربط رقم الواتساب الخاص بك لإرسال الإشعارات</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-xl">
-                      <div className="w-3 h-3 rounded-full bg-gray-400"></div>
-                      <span className="text-sm font-bold text-gray-600">غير متصل</span>
+                    <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${
+                      whatsappStatus.status === 'connected' ? 'bg-green-100' : 
+                      whatsappStatus.status === 'qr_ready' ? 'bg-yellow-100' :
+                      whatsappStatus.status === 'connecting' ? 'bg-blue-100' : 'bg-gray-100'
+                    }`}>
+                      <div className={`w-3 h-3 rounded-full ${
+                        whatsappStatus.status === 'connected' ? 'bg-green-500' : 
+                        whatsappStatus.status === 'qr_ready' ? 'bg-yellow-500 animate-pulse' :
+                        whatsappStatus.status === 'connecting' ? 'bg-blue-500 animate-pulse' : 'bg-gray-400'
+                      }`}></div>
+                      <span className={`text-sm font-bold ${
+                        whatsappStatus.status === 'connected' ? 'text-green-700' : 
+                        whatsappStatus.status === 'qr_ready' ? 'text-yellow-700' :
+                        whatsappStatus.status === 'connecting' ? 'text-blue-700' : 'text-gray-600'
+                      }`}>
+                        {whatsappStatus.status === 'connected' ? 'متصل ✓' : 
+                         whatsappStatus.status === 'qr_ready' ? 'في انتظار المسح' :
+                         whatsappStatus.status === 'connecting' ? 'جاري الاتصال...' : 'غير متصل'}
+                      </span>
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* QR Code Section */}
                     <div className="bg-white p-6 rounded-2xl border border-gray-200 text-center space-y-4">
-                      <div className="w-48 h-48 mx-auto bg-gray-100 rounded-xl flex items-center justify-center">
-                        <div className="text-center">
-                          <Smartphone size={48} className="mx-auto text-gray-300 mb-2" />
-                          <p className="text-xs text-gray-400 font-bold">اضغط للحصول على QR Code</p>
-                        </div>
+                      <div className="w-48 h-48 mx-auto bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden">
+                        {whatsappStatus.status === 'connected' ? (
+                          <div className="text-center">
+                            <CheckCircle2 size={64} className="mx-auto text-green-500 mb-2" />
+                            <p className="text-sm text-green-600 font-bold">متصل بنجاح!</p>
+                          </div>
+                        ) : whatsappStatus.qrCode ? (
+                          <img src={whatsappStatus.qrCode} alt="WhatsApp QR Code" className="w-full h-full object-contain" />
+                        ) : isConnecting ? (
+                          <div className="text-center">
+                            <Loader2 size={48} className="mx-auto text-green-500 mb-2 animate-spin" />
+                            <p className="text-xs text-gray-500 font-bold">جاري إنشاء QR Code...</p>
+                          </div>
+                        ) : (
+                          <div className="text-center">
+                            <Smartphone size={48} className="mx-auto text-gray-300 mb-2" />
+                            <p className="text-xs text-gray-400 font-bold">اضغط للحصول على QR Code</p>
+                          </div>
+                        )}
                       </div>
-                      <button className="w-full bg-green-500 text-white py-3 rounded-xl font-bold hover:bg-green-600 transition-all">
-                        بدء الربط
-                      </button>
-                      <p className="text-xs text-gray-400">امسح الكود من تطبيق الواتساب على هاتفك</p>
+                      
+                      {whatsappStatus.status === 'connected' ? (
+                        <button 
+                          onClick={handleDisconnectWhatsApp}
+                          className="w-full bg-red-500 text-white py-3 rounded-xl font-bold hover:bg-red-600 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Unplug size={18} />
+                          قطع الاتصال
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={handleStartWhatsAppConnection}
+                          disabled={isConnecting}
+                          className="w-full bg-green-500 text-white py-3 rounded-xl font-bold hover:bg-green-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {isConnecting ? (
+                            <>
+                              <Loader2 size={18} className="animate-spin" />
+                              جاري الربط...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw size={18} />
+                              بدء الربط
+                            </>
+                          )}
+                        </button>
+                      )}
+                      
+                      <p className="text-xs text-gray-400">
+                        {whatsappStatus.status === 'qr_ready' 
+                          ? 'امسح الكود من واتساب > الأجهزة المرتبطة > ربط جهاز' 
+                          : 'امسح الكود من تطبيق الواتساب على هاتفك'}
+                      </p>
                     </div>
                     
                     {/* Settings Section */}
@@ -295,7 +467,9 @@ const SettingsPage: React.FC = () => {
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">رقم المستلم</label>
                         <input 
                           type="tel" 
-                          placeholder="05xxxxxxxx" 
+                          placeholder="05xxxxxxxx"
+                          value={whatsappPhone}
+                          onChange={(e) => setWhatsappPhone(e.target.value)}
                           className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-green-500/10 focus:border-green-500 outline-none transition-all" 
                           dir="ltr"
                         />
@@ -304,7 +478,12 @@ const SettingsPage: React.FC = () => {
                       
                       <div className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-2xl">
                         <label className="relative inline-flex items-center cursor-pointer">
-                          <input type="checkbox" className="sr-only peer" defaultChecked />
+                          <input 
+                            type="checkbox" 
+                            className="sr-only peer" 
+                            checked={notifyOnPublish}
+                            onChange={(e) => setNotifyOnPublish(e.target.checked)}
+                          />
                           <div className="w-14 h-8 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:right-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-500 shadow-inner"></div>
                         </label>
                         <span className="text-sm font-bold text-gray-700">تفعيل إشعارات النشر</span>
@@ -315,6 +494,15 @@ const SettingsPage: React.FC = () => {
                           💡 بعد الربط، ستصلك رسالة واتساب عند كل نشر ناجح أو فاشل
                         </p>
                       </div>
+
+                      {whatsappStatus.status === 'connected' && (
+                        <div className="p-4 bg-green-50 rounded-xl border border-green-100">
+                          <p className="text-xs text-green-700 font-bold flex items-center gap-2">
+                            <CheckCircle2 size={14} />
+                            الواتساب متصل وجاهز لإرسال الإشعارات
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
