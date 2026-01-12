@@ -1,10 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, RefreshCw, QrCode, Smartphone, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
-import { api } from '@/lib/api';
+import { apiRequest } from '../lib/api';
 
 interface WhatsAppStatus {
   status: 'disconnected' | 'qr_ready' | 'connecting' | 'connected' | 'failed';
@@ -26,22 +22,20 @@ export default function WhatsAppSettingsPage() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const response = await api.get('/whatsapp/web/status');
-      setStatus(response.data);
-      return response.data;
+      const response = await apiRequest('/whatsapp/web/status');
+      setStatus(response);
+      return response;
     } catch (error) {
       console.error('Failed to fetch WhatsApp status:', error);
       return null;
     }
   }, []);
 
-  // Initial fetch
   useEffect(() => {
     setLoading(true);
     fetchStatus().finally(() => setLoading(false));
   }, [fetchStatus]);
 
-  // Poll for status updates when QR is ready or connecting
   useEffect(() => {
     if (status.status === 'qr_ready' || status.status === 'connecting') {
       setPolling(true);
@@ -63,15 +57,14 @@ export default function WhatsAppSettingsPage() {
   const handleInitialize = async () => {
     setInitializing(true);
     try {
-      await api.post('/whatsapp/web/initialize');
-      // Start polling for QR code
+      await apiRequest('/whatsapp/web/initialize', { method: 'POST' });
       setTimeout(fetchStatus, 2000);
     } catch (error: any) {
       console.error('Failed to initialize WhatsApp:', error);
       setStatus(prev => ({
         ...prev,
         status: 'failed',
-        error: error.response?.data?.message || 'فشل في تهيئة الاتصال',
+        error: error.message || 'فشل في تهيئة الاتصال',
       }));
     } finally {
       setInitializing(false);
@@ -81,7 +74,7 @@ export default function WhatsAppSettingsPage() {
   const handleDisconnect = async () => {
     setLoading(true);
     try {
-      await api.post('/whatsapp/web/disconnect');
+      await apiRequest('/whatsapp/web/disconnect', { method: 'POST' });
       setStatus({
         status: 'disconnected',
         qrCode: null,
@@ -96,129 +89,136 @@ export default function WhatsAppSettingsPage() {
   };
 
   const getStatusBadge = () => {
+    const baseClasses = "inline-flex items-center px-3 py-1 rounded-full text-xs font-medium";
     switch (status.status) {
       case 'connected':
-        return <Badge className="bg-green-500"><CheckCircle2 className="w-3 h-3 ml-1" /> متصل</Badge>;
+        return <span className={`${baseClasses} bg-green-100 text-green-800`}><CheckCircle2 className="w-3 h-3 ml-1" /> متصل</span>;
       case 'connecting':
-        return <Badge className="bg-yellow-500"><Loader2 className="w-3 h-3 ml-1 animate-spin" /> جاري الاتصال</Badge>;
+        return <span className={`${baseClasses} bg-yellow-100 text-yellow-800`}><Loader2 className="w-3 h-3 ml-1 animate-spin" /> جاري الاتصال</span>;
       case 'qr_ready':
-        return <Badge className="bg-blue-500"><QrCode className="w-3 h-3 ml-1" /> في انتظار المسح</Badge>;
+        return <span className={`${baseClasses} bg-blue-100 text-blue-800`}><QrCode className="w-3 h-3 ml-1" /> في انتظار المسح</span>;
       case 'failed':
-        return <Badge className="bg-red-500"><XCircle className="w-3 h-3 ml-1" /> فشل</Badge>;
+        return <span className={`${baseClasses} bg-red-100 text-red-800`}><XCircle className="w-3 h-3 ml-1" /> فشل</span>;
       default:
-        return <Badge variant="secondary"><AlertTriangle className="w-3 h-3 ml-1" /> غير متصل</Badge>;
+        return <span className={`${baseClasses} bg-gray-100 text-gray-800`}><AlertTriangle className="w-3 h-3 ml-1" /> غير متصل</span>;
     }
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">إعدادات الواتساب</h1>
-          <p className="text-muted-foreground">ربط حساب الواتساب لإرسال الإشعارات</p>
+          <h1 className="text-2xl font-bold text-gray-900">إعدادات الواتساب</h1>
+          <p className="text-gray-500">ربط حساب الواتساب لإرسال الإشعارات</p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchStatus} disabled={polling}>
-          <RefreshCw className={`w-4 h-4 ml-2 ${polling ? 'animate-spin' : ''}`} />
+        <button 
+          onClick={() => fetchStatus()} 
+          disabled={polling}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${polling ? 'animate-spin' : ''}`} />
           تحديث
-        </Button>
+        </button>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Status Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Smartphone className="w-5 h-5" />
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-gray-50">
+            <h2 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+              <Smartphone className="w-5 h-5 text-blue-600" />
               حالة الاتصال
-            </CardTitle>
-            <CardDescription>
-              حالة اتصال الواتساب الحالية
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">حالة اتصال الواتساب الحالية</p>
+          </div>
+          <div className="p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">الحالة:</span>
+              <span className="text-sm text-gray-500">الحالة:</span>
               {getStatusBadge()}
             </div>
 
             {status.phoneNumber && (
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">رقم الهاتف:</span>
-                <span className="font-mono">{status.phoneNumber}</span>
+                <span className="text-sm text-gray-500">رقم الهاتف:</span>
+                <span className="font-mono text-gray-900">{status.phoneNumber}</span>
               </div>
             )}
 
             {status.error && (
-              <Alert variant="destructive">
-                <AlertDescription>{status.error}</AlertDescription>
-              </Alert>
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                {status.error}
+              </div>
             )}
 
             <div className="flex gap-2 pt-4">
               {status.status === 'connected' ? (
-                <Button variant="destructive" onClick={handleDisconnect} disabled={loading}>
+                <button 
+                  onClick={handleDisconnect} 
+                  disabled={loading}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
                   قطع الاتصال
-                </Button>
-              ) : status.status === 'disconnected' || status.status === 'failed' ? (
-                <Button onClick={handleInitialize} disabled={initializing}>
+                </button>
+              ) : (status.status === 'disconnected' || status.status === 'failed') ? (
+                <button 
+                  onClick={handleInitialize} 
+                  disabled={initializing}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
                   {initializing ? (
                     <>
-                      <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                      <Loader2 className="w-4 h-4 animate-spin" />
                       جاري التهيئة...
                     </>
                   ) : (
                     <>
-                      <QrCode className="w-4 h-4 ml-2" />
+                      <QrCode className="w-4 h-4" />
                       ربط الواتساب
                     </>
                   )}
-                </Button>
+                </button>
               ) : null}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* QR Code Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <QrCode className="w-5 h-5" />
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-gray-50">
+            <h2 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+              <QrCode className="w-5 h-5 text-blue-600" />
               رمز QR
-            </CardTitle>
-            <CardDescription>
-              امسح هذا الرمز من تطبيق الواتساب على هاتفك
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">امسح هذا الرمز من تطبيق الواتساب على هاتفك</p>
+          </div>
+          <div className="p-6">
             {status.status === 'qr_ready' && status.qrCode ? (
               <div className="space-y-4">
-                <div className="flex justify-center p-4 bg-white rounded-lg">
+                <div className="flex justify-center p-4 bg-white rounded-lg border">
                   <img 
                     src={status.qrCode} 
                     alt="WhatsApp QR Code" 
                     className="w-64 h-64"
                   />
                 </div>
-                <Alert>
-                  <AlertDescription>
-                    <ol className="list-decimal list-inside space-y-1 text-sm">
-                      <li>افتح تطبيق الواتساب على هاتفك</li>
-                      <li>اذهب إلى الإعدادات &gt; الأجهزة المرتبطة</li>
-                      <li>اضغط على "ربط جهاز"</li>
-                      <li>وجّه الكاميرا نحو هذا الرمز</li>
-                    </ol>
-                  </AlertDescription>
-                </Alert>
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <ol className="list-decimal list-inside space-y-1 text-sm text-blue-800">
+                    <li>افتح تطبيق الواتساب على هاتفك</li>
+                    <li>اذهب إلى الإعدادات &gt; الأجهزة المرتبطة</li>
+                    <li>اضغط على "ربط جهاز"</li>
+                    <li>وجّه الكاميرا نحو هذا الرمز</li>
+                  </ol>
+                </div>
                 {polling && (
-                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     في انتظار المسح...
                   </div>
@@ -226,66 +226,56 @@ export default function WhatsAppSettingsPage() {
               </div>
             ) : status.status === 'connecting' ? (
               <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                <Loader2 className="w-12 h-12 animate-spin text-primary" />
-                <p className="text-muted-foreground">جاري الاتصال بالواتساب...</p>
+                <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+                <p className="text-gray-500">جاري الاتصال بالواتساب...</p>
               </div>
             ) : status.status === 'connected' ? (
               <div className="flex flex-col items-center justify-center py-12 space-y-4">
                 <CheckCircle2 className="w-16 h-16 text-green-500" />
                 <p className="text-lg font-medium text-green-600">تم الاتصال بنجاح!</p>
-                <p className="text-sm text-muted-foreground">
-                  سيتم إرسال الإشعارات عبر الواتساب تلقائياً
-                </p>
+                <p className="text-sm text-gray-500">سيتم إرسال الإشعارات عبر الواتساب تلقائياً</p>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-12 space-y-4 text-center">
-                <QrCode className="w-16 h-16 text-muted-foreground/50" />
-                <p className="text-muted-foreground">
-                  اضغط على "ربط الواتساب" لبدء عملية الربط
-                </p>
+                <QrCode className="w-16 h-16 text-gray-300" />
+                <p className="text-gray-500">اضغط على "ربط الواتساب" لبدء عملية الربط</p>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {/* Info Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>كيف يعمل؟</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-gray-50">
+          <h2 className="text-lg font-bold text-gray-900">كيف يعمل؟</h2>
+        </div>
+        <div className="p-6">
           <div className="grid gap-4 md:grid-cols-3">
-            <div className="p-4 border rounded-lg">
+            <div className="p-4 border border-gray-100 rounded-xl">
               <div className="flex items-center gap-2 mb-2">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold">1</div>
-                <h3 className="font-medium">ربط الحساب</h3>
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-bold text-sm">1</div>
+                <h3 className="font-medium text-gray-900">ربط الحساب</h3>
               </div>
-              <p className="text-sm text-muted-foreground">
-                امسح رمز QR من تطبيق الواتساب لربط حسابك
-              </p>
+              <p className="text-sm text-gray-500">امسح رمز QR من تطبيق الواتساب لربط حسابك</p>
             </div>
-            <div className="p-4 border rounded-lg">
+            <div className="p-4 border border-gray-100 rounded-xl">
               <div className="flex items-center gap-2 mb-2">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold">2</div>
-                <h3 className="font-medium">إشعارات تلقائية</h3>
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-bold text-sm">2</div>
+                <h3 className="font-medium text-gray-900">إشعارات تلقائية</h3>
               </div>
-              <p className="text-sm text-muted-foreground">
-                ستصلك إشعارات عند نجاح أو فشل عمليات النشر
-              </p>
+              <p className="text-sm text-gray-500">ستصلك إشعارات عند نجاح أو فشل عمليات النشر</p>
             </div>
-            <div className="p-4 border rounded-lg">
+            <div className="p-4 border border-gray-100 rounded-xl">
               <div className="flex items-center gap-2 mb-2">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold">3</div>
-                <h3 className="font-medium">آمن ومشفر</h3>
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-bold text-sm">3</div>
+                <h3 className="font-medium text-gray-900">آمن ومشفر</h3>
               </div>
-              <p className="text-sm text-muted-foreground">
-                الاتصال مشفر من طرف إلى طرف كما في الواتساب العادي
-              </p>
+              <p className="text-sm text-gray-500">الاتصال مشفر من طرف إلى طرف كما في الواتساب العادي</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
