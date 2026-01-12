@@ -154,14 +154,17 @@ export class PublishNotificationService {
   }
 
   /**
-   * Send WhatsApp message via WhatsApp Web connection
+   * Send WhatsApp message via WhatsApp Web connection or API
    */
   private async sendWhatsAppMessage(phone: string, message: string, tenantId?: string): Promise<boolean> {
     const normalizedPhone = this.normalizePhoneNumber(phone);
 
+    this.logger.log(`Attempting to send WhatsApp to ${normalizedPhone}`);
+
     // Primary Method: WhatsApp Web (user's own number via QR code)
     if (this.whatsappWebService && tenantId) {
       const status = this.whatsappWebService.getStatus(tenantId);
+      this.logger.log(`WhatsApp Web status for tenant ${tenantId}: ${status.status}`);
       
       if (status.status === 'connected') {
         try {
@@ -173,7 +176,7 @@ export class PublishNotificationService {
           );
           
           if (result.success) {
-            this.logger.log(`WhatsApp sent via WhatsApp Web to ${normalizedPhone}`);
+            this.logger.log(`✅ WhatsApp sent via WhatsApp Web to ${normalizedPhone}`);
             return true;
           } else {
             this.logger.error(`WhatsApp Web error: ${result.error}`);
@@ -184,14 +187,21 @@ export class PublishNotificationService {
       } else {
         this.logger.warn(`WhatsApp Web not connected for tenant ${tenantId}. Status: ${status.status}`);
       }
+    } else {
+      this.logger.warn(`WhatsApp Web service not available or no tenantId`);
     }
 
-    // No WhatsApp Web connected - log for debugging
-    this.logger.warn(`WhatsApp Web not available. Message would be sent to ${normalizedPhone}:`);
-    this.logger.debug(message);
+    // Log the message that would be sent
+    this.logger.log(`📱 WhatsApp notification for ${normalizedPhone}:`);
+    this.logger.log(message);
     
-    // Return true in dev mode to not block flow
-    return this.configService.get<string>('NODE_ENV') !== 'production';
+    // In development, return true to not block flow
+    const isDev = this.configService.get<string>('NODE_ENV') !== 'production';
+    if (isDev) {
+      this.logger.log(`[DEV] WhatsApp message logged (not sent in dev mode)`);
+    }
+    
+    return isDev;
   }
 
   /**

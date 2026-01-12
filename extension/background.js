@@ -661,50 +661,10 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
     }
     
     if (platform === 'X') {
-      // First fill the text content, then handle media
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        func: (text) => {
-          // Wait for composer to appear
-          let attempts = 0;
-          const maxAttempts = 20;
-          
-          const tryFill = () => {
-            attempts++;
-            const editor = document.querySelector('[data-testid="tweetTextarea_0"]') ||
-                          document.querySelector('[data-testid="tweetTextarea_0_label"]')?.nextElementSibling ||
-                          document.querySelector('[role="textbox"][data-testid]') ||
-                          document.querySelector('.public-DraftEditor-content') ||
-                          document.querySelector('[contenteditable="true"]');
-            
-            if (editor) {
-              editor.focus();
-              if (document.execCommand) {
-                document.execCommand('insertText', false, text);
-              } else {
-                editor.textContent = text;
-                editor.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-              console.log('[Postzzz] Content filled successfully');
-              return true;
-            }
-            
-            if (attempts < maxAttempts) {
-              setTimeout(tryFill, 500);
-            }
-            return false;
-          };
-          
-          tryFill();
-        },
-        args: [content],
-      });
-      
-      // Wait for content to be filled
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // If we have media, upload via clipboard paste
+      // If we have media, upload it FIRST before filling text
       if (mediaBlobs.length > 0) {
+        console.log('[Postzzz] Uploading media first...');
+        
         for (const media of mediaBlobs) {
           try {
             // Convert blob to base64 for transfer to content script
@@ -715,79 +675,111 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
               reader.readAsDataURL(media.blob);
             });
             
+            console.log('[Postzzz] Injecting media into page...');
+            
             await chrome.scripting.executeScript({
               target: { tabId },
-              func: async (base64Data, mimeType) => {
-                // Convert base64 to blob
-                const byteString = atob(base64Data.split(',')[1]);
-                const ab = new ArrayBuffer(byteString.length);
-                const ia = new Uint8Array(ab);
-                for (let i = 0; i < byteString.length; i++) {
-                  ia[i] = byteString.charCodeAt(i);
-                }
-                const blob = new Blob([ab], { type: mimeType });
-                
-                // Try clipboard paste method
-                try {
-                  const clipboardItem = new ClipboardItem({ [mimeType]: blob });
-                  await navigator.clipboard.write([clipboardItem]);
-                  
-                  // Focus editor and paste
-                  const editor = document.querySelector('[data-testid="tweetTextarea_0"]') ||
-                                document.querySelector('[contenteditable="true"]');
-                  if (editor) {
-                    editor.focus();
-                    document.execCommand('paste');
-                    console.log('[Postzzz] Media pasted from clipboard');
-                    return true;
+              func: (base64Data, mimeType) => {
+                return new Promise((resolve) => {
+                  // Convert base64 to blob
+                  const byteString = atob(base64Data.split(',')[1]);
+                  const ab = new ArrayBuffer(byteString.length);
+                  const ia = new Uint8Array(ab);
+                  for (let i = 0; i < byteString.length; i++) {
+                    ia[i] = byteString.charCodeAt(i);
                   }
-                } catch (clipboardError) {
-                  console.log('[Postzzz] Clipboard paste failed, trying file input');
-                }
-                
-                // Fallback: Try to find and click media button, then use file input
-                const mediaBtn = document.querySelector('[data-testid="fileInput"]')?.closest('button') ||
-                                document.querySelector('[aria-label*="Add photos"]') ||
-                                document.querySelector('[aria-label*="Media"]') ||
-                                document.querySelector('input[type="file"][accept*="image"]')?.closest('div')?.querySelector('button');
-                
-                if (mediaBtn) {
-                  mediaBtn.click();
-                  await new Promise(r => setTimeout(r, 500));
-                }
-                
-                // Find file input
-                const fileInput = document.querySelector('input[type="file"][accept*="image"]') ||
-                                 document.querySelector('input[type="file"][accept*="video"]') ||
-                                 document.querySelector('input[type="file"]');
-                
-                if (fileInput) {
-                  const file = new File([blob], 'media.' + mimeType.split('/')[1], { type: mimeType });
-                  const dt = new DataTransfer();
-                  dt.items.add(file);
-                  fileInput.files = dt.files;
-                  fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                  console.log('[Postzzz] Media file added to input');
-                  return true;
-                }
-                
-                console.error('[Postzzz] Could not upload media');
-                return false;
+                  const blob = new Blob([ab], { type: mimeType });
+                  const file = new File([blob], 'image.' + (mimeType.split('/')[1] || 'png'), { type: mimeType });
+                  
+                  console.log('[Postzzz] Created file:', file.name, file.size, 'bytes');
+                  
+                  // Find the file input - X uses a hidden input
+                  const fileInput = document.querySelector('input[type="file"][data-testid="fileInput"]') ||
+                                   document.querySelector('input[type="file"][accept*="image"]') ||
+                                   document.querySelector('input[type="file"]');
+                  
+                  if (fileInput) {
+                    console.log('[Postzzz] Found file input, adding file...');
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    fileInput.files = dt.files;
+                    
+                    // Dispatch events
+                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    
+                    console.log('[Postzzz] ✅ Media file added successfully');
+                    resolve(true);
+                  } else {
+                    console.error('[Postzzz] ❌ File input not found');
+                    resolve(false);
+                  }
+                });
               },
               args: [base64, media.mimeType],
             });
             
             // Wait for upload to process
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            console.log('[Postzzz] Waiting for media to upload...');
+            await new Promise(resolve => setTimeout(resolve, 4000));
           } catch (e) {
             console.error('[Postzzz] Failed to inject media:', e);
           }
         }
       }
       
-      // Auto-click Post button after media is uploaded
+      // Now fill the text content
+      console.log('[Postzzz] Filling text content...');
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (text) => {
+          return new Promise((resolve) => {
+            let attempts = 0;
+            const maxAttempts = 20;
+            
+            const tryFill = () => {
+              attempts++;
+              const editor = document.querySelector('[data-testid="tweetTextarea_0"]') ||
+                            document.querySelector('[data-testid="tweetTextarea_0_label"]')?.nextElementSibling ||
+                            document.querySelector('[role="textbox"][data-testid]') ||
+                            document.querySelector('.public-DraftEditor-content') ||
+                            document.querySelector('[contenteditable="true"]');
+              
+              if (editor) {
+                editor.focus();
+                if (document.execCommand) {
+                  document.execCommand('insertText', false, text);
+                } else {
+                  editor.textContent = text;
+                  editor.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                console.log('[Postzzz] ✅ Content filled successfully');
+                resolve(true);
+                return;
+              }
+              
+              if (attempts < maxAttempts) {
+                setTimeout(tryFill, 500);
+              } else {
+                console.error('[Postzzz] ❌ Could not find editor after', maxAttempts, 'attempts');
+                resolve(false);
+              }
+            };
+            
+            tryFill();
+          });
+        },
+        args: [content],
+      });
+      
+      // Wait for content to be filled
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Auto-click Post button
       if (autoPost) {
+        console.log('[Postzzz] Waiting before clicking Post...');
         await new Promise(resolve => setTimeout(resolve, 2000));
+        
         await chrome.scripting.executeScript({
           target: { tabId },
           func: () => {
@@ -797,10 +789,12 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
                            document.querySelector('div[role="button"][data-testid*="tweet"]');
             
             if (postBtn && !postBtn.disabled) {
-              console.log('[Postzzz] Clicking Post button...');
+              console.log('[Postzzz] ✅ Clicking Post button...');
               postBtn.click();
+              return true;
             } else {
-              console.log('[Postzzz] Post button not found or disabled');
+              console.log('[Postzzz] ⚠️ Post button not found or disabled');
+              return false;
             }
           },
           args: [],
