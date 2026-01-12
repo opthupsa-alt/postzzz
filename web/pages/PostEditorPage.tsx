@@ -37,7 +37,15 @@ const PostEditorPage: React.FC = () => {
   const [selectedClient, setSelectedClient] = useState('');
   const [title, setTitle] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>([]);
-  const [variantContents, setVariantContents] = useState<Record<SocialPlatform, { caption: string; hashtags: string; mediaAssets: MediaAsset[] }>>({} as any);
+  const [variantContents, setVariantContents] = useState<Record<SocialPlatform, { 
+    caption: string; 
+    hashtags: string; 
+    mediaAssets: MediaAsset[];
+    // YouTube specific fields
+    videoTitle?: string;
+    madeForKids?: boolean;
+    visibility?: 'public' | 'unlisted' | 'private';
+  }>>({} as any);
   const [scheduledAt, setScheduledAt] = useState('');
   const [clients, setClients] = useState<Client[]>([]);
   const [activeVariantTab, setActiveVariantTab] = useState<SocialPlatform | null>(null);
@@ -110,9 +118,18 @@ const PostEditorPage: React.FC = () => {
         }
         // Initialize content for new platform
         if (!variantContents[platformId]) {
+          const initialContent: any = { caption: '', hashtags: '', mediaAssets: [] };
+          
+          // Add YouTube-specific fields
+          if (platformId === 'YOUTUBE') {
+            initialContent.videoTitle = '';
+            initialContent.madeForKids = false;
+            initialContent.visibility = 'public';
+          }
+          
           setVariantContents(prev => ({
             ...prev,
-            [platformId]: { caption: '', hashtags: '', mediaAssets: [] },
+            [platformId]: initialContent,
           }));
         }
         return [...prev, platformId];
@@ -120,7 +137,7 @@ const PostEditorPage: React.FC = () => {
     });
   };
 
-  const updateVariantContent = (platform: SocialPlatform, field: 'caption' | 'hashtags', value: string) => {
+  const updateVariantContent = (platform: SocialPlatform, field: string, value: any) => {
     setVariantContents(prev => ({
       ...prev,
       [platform]: {
@@ -393,6 +410,78 @@ const PostEditorPage: React.FC = () => {
                       className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none"
                     />
                   </div>
+
+                  {/* YouTube Specific Fields */}
+                  {activeVariantTab === 'YOUTUBE' && (
+                    <div className="space-y-4 p-4 bg-red-50 rounded-xl border border-red-100">
+                      <h4 className="font-bold text-red-700 flex items-center gap-2">
+                        <Youtube size={18} />
+                        إعدادات YouTube
+                      </h4>
+                      
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">
+                          عنوان الفيديو <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={variantContents[activeVariantTab]?.videoTitle || ''}
+                          onChange={(e) => updateVariantContent(activeVariantTab, 'videoTitle', e.target.value)}
+                          placeholder="عنوان الفيديو (100 حرف كحد أقصى)"
+                          maxLength={100}
+                          className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none"
+                        />
+                        <div className="flex justify-end mt-1">
+                          <span className="text-xs text-gray-400">
+                            {(variantContents[activeVariantTab]?.videoTitle || '').length}/100
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">
+                          هل المحتوى مناسب للأطفال؟ <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex gap-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="madeForKids"
+                              checked={variantContents[activeVariantTab]?.madeForKids === false}
+                              onChange={() => updateVariantContent(activeVariantTab, 'madeForKids', false)}
+                              className="w-4 h-4 text-red-600"
+                            />
+                            <span className="text-sm">لا، ليس للأطفال</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="madeForKids"
+                              checked={variantContents[activeVariantTab]?.madeForKids === true}
+                              onChange={() => updateVariantContent(activeVariantTab, 'madeForKids', true)}
+                              className="w-4 h-4 text-red-600"
+                            />
+                            <span className="text-sm">نعم، للأطفال</span>
+                          </label>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">
+                          الخصوصية
+                        </label>
+                        <select
+                          value={variantContents[activeVariantTab]?.visibility || 'public'}
+                          onChange={(e) => updateVariantContent(activeVariantTab, 'visibility', e.target.value)}
+                          className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none"
+                        >
+                          <option value="public">عام - يمكن للجميع مشاهدته</option>
+                          <option value="unlisted">غير مدرج - فقط من لديه الرابط</option>
+                          <option value="private">خاص - أنت فقط</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Media Preview */}
                   {variantContents[activeVariantTab]?.mediaAssets?.length > 0 && (
