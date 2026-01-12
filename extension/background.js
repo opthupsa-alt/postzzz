@@ -24,9 +24,12 @@ let platformConfig = {
 };
 
 // Load config from config files
+// Priority: config.js (local dev) takes precedence over config.production.js
 async function loadLocalConfig() {
-  const configFiles = ['config.production.js', 'config.js'];
-  let configLoaded = false;
+  // Try config.js first (local development)
+  // If it exists and has valid config, use it and stop
+  // Otherwise fall back to config.production.js
+  const configFiles = ['config.js', 'config.production.js'];
   
   for (const configFile of configFiles) {
     try {
@@ -54,16 +57,15 @@ async function loadLocalConfig() {
           apiUrl: platformConfig.apiUrl, 
           platformUrl: platformConfig.platformUrl 
         });
-        configLoaded = true;
+        // Stop after first successful config load
+        return;
       }
     } catch (error) {
-      // Silently ignore
+      // Silently ignore - file may not exist
     }
   }
   
-  if (!configLoaded) {
-    console.log('[Postzzz] Using default production config');
-  }
+  console.log('[Postzzz] Using default production config');
 }
 
 loadLocalConfig();
