@@ -1,9 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { WhatsAppWebService } from '../whatsapp/whatsapp-web.service';
 
 export interface PublishNotification {
   userId: string;
+  tenantId: string;
   postTitle: string;
   platform: string;
   status: 'SUCCESS' | 'FAILED';
@@ -14,16 +16,18 @@ export interface PublishNotification {
 @Injectable()
 export class PublishNotificationService {
   private readonly logger = new Logger(PublishNotificationService.name);
-  private readonly callmeApiKey: string;
-  private readonly callmeInstanceId: string;
+  private whatsappWebService: WhatsAppWebService | null = null;
 
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
-  ) {
-    // CallMeBot or similar WhatsApp API credentials
-    this.callmeApiKey = this.configService.get<string>('WHATSAPP_API_KEY') || '';
-    this.callmeInstanceId = this.configService.get<string>('WHATSAPP_INSTANCE_ID') || '';
+  ) {}
+
+  /**
+   * Set WhatsApp Web service (injected later to avoid circular dependency)
+   */
+  setWhatsAppWebService(service: WhatsAppWebService) {
+    this.whatsappWebService = service;
   }
 
   /**
@@ -60,8 +64,8 @@ export class PublishNotificationService {
       // Build message
       const message = this.buildNotificationMessage(notification, user.name);
 
-      // Send via WhatsApp API
-      const sent = await this.sendWhatsAppMessage(user.whatsappPhone, message);
+      // Send via WhatsApp Web
+      const sent = await this.sendWhatsAppMessage(user.whatsappPhone, message, notification.tenantId);
 
       if (sent) {
         this.logger.log(`Notification sent to ${user.whatsappPhone} for ${notification.status}`);
@@ -150,90 +154,40 @@ export class PublishNotificationService {
   }
 
   /**
-   * Send WhatsApp message via API
-   * Using CallMeBot free API or similar service
+   * Send WhatsApp message via WhatsApp Web connection
    */
-  private async sendWhatsAppMessage(phone: string, message: string): Promise<boolean> {
+  private async sendWhatsAppMessage(phone: string, message: string, tenantId?: string): Promise<boolean> {
     const normalizedPhone = this.normalizePhoneNumber(phone);
 
-    // Method 1: CallMeBot API (free, requires registration)
-    if (this.callmeApiKey) {
-      try {
-        const url = `https://api.callmebot.com/whatsapp.php?phone=${normalizedPhone}&text=${encodeURIComponent(message)}&apikey=${this.callmeApiKey}`;
-        
-        const response = await fetch(url);
-        
-        if (response.ok) {
-          this.logger.log(`WhatsApp sent via CallMeBot to ${normalizedPhone}`);
-          return true;
+    // Primary Method: WhatsApp Web (user's own number via QR code)
+    if (this.whatsappWebService && tenantId) {
+      const status = this.whatsappWebService.getStatus(tenantId);
+      
+      if (status.status === 'connected') {
+        try {
+          const result = await this.whatsappWebService.sendMessage(
+            tenantId,
+            'system', // System notification
+            normalizedPhone,
+            message,
+          );
+          
+          if (result.success) {
+            this.logger.log(`WhatsApp sent via WhatsApp Web to ${normalizedPhone}`);
+            return true;
+          } else {
+            this.logger.error(`WhatsApp Web error: ${result.error}`);
+          }
+        } catch (error: any) {
+          this.logger.error(`WhatsApp Web error: ${error.message}`);
         }
-      } catch (error) {
-        this.logger.error(`CallMeBot error: ${error.message}`);
+      } else {
+        this.logger.warn(`WhatsApp Web not connected for tenant ${tenantId}. Status: ${status.status}`);
       }
     }
 
-    // Method 2: UltraMsg API (paid, more reliable)
-    const ultraMsgToken = this.configService.get<string>('ULTRAMSG_TOKEN');
-    const ultraMsgInstance = this.configService.get<string>('ULTRAMSG_INSTANCE');
-    
-    if (ultraMsgToken && ultraMsgInstance) {
-      try {
-        const url = `https://api.ultramsg.com/${ultraMsgInstance}/messages/chat`;
-        
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            token: ultraMsgToken,
-            to: normalizedPhone,
-            body: message,
-          }),
-        });
-
-        if (response.ok) {
-          this.logger.log(`WhatsApp sent via UltraMsg to ${normalizedPhone}`);
-          return true;
-        }
-      } catch (error) {
-        this.logger.error(`UltraMsg error: ${error.message}`);
-      }
-    }
-
-    // Method 3: Twilio WhatsApp (enterprise)
-    const twilioSid = this.configService.get<string>('TWILIO_ACCOUNT_SID');
-    const twilioToken = this.configService.get<string>('TWILIO_AUTH_TOKEN');
-    const twilioFrom = this.configService.get<string>('TWILIO_WHATSAPP_FROM');
-
-    if (twilioSid && twilioToken && twilioFrom) {
-      try {
-        const url = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
-        
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Basic ' + Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64'),
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            From: `whatsapp:${twilioFrom}`,
-            To: `whatsapp:+${normalizedPhone}`,
-            Body: message,
-          }),
-        });
-
-        if (response.ok) {
-          this.logger.log(`WhatsApp sent via Twilio to ${normalizedPhone}`);
-          return true;
-        }
-      } catch (error) {
-        this.logger.error(`Twilio error: ${error.message}`);
-      }
-    }
-
-    // No API configured - log for debugging
-    this.logger.warn(`No WhatsApp API configured. Message would be sent to ${normalizedPhone}:`);
+    // No WhatsApp Web connected - log for debugging
+    this.logger.warn(`WhatsApp Web not available. Message would be sent to ${normalizedPhone}:`);
     this.logger.debug(message);
     
     // Return true in dev mode to not block flow
@@ -250,12 +204,13 @@ export class PublishNotificationService {
     errorMessage?: string,
   ): Promise<void> {
     try {
-      // Get post with creator
+      // Get post with creator and tenant
       const post = await this.prisma.post.findUnique({
         where: { id: postId },
         select: {
           id: true,
           title: true,
+          tenantId: true,
           createdById: true,
           createdBy: {
             select: {
@@ -275,13 +230,14 @@ export class PublishNotificationService {
       // Send notification to post creator
       await this.sendPublishNotification({
         userId: post.createdBy.id,
+        tenantId: post.tenantId,
         postTitle: post.title || 'منشور',
         platform,
         status,
         errorMessage,
         publishedAt: new Date(),
       });
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Failed to notify for post ${postId}: ${error.message}`);
     }
   }

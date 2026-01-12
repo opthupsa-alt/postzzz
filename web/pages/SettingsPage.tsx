@@ -256,37 +256,64 @@ const SettingsPage: React.FC = () => {
                    <Bell size={64} className="text-blue-200 opacity-50 -mr-4" />
                 </div>
 
-                {/* WhatsApp Notification Settings */}
+                {/* WhatsApp Web Connection */}
                 <div className="p-8 bg-green-50/50 border border-green-100 rounded-[2rem] space-y-6">
-                  <div className="flex items-center gap-4">
-                    <div className="p-4 bg-green-500 text-white rounded-2xl">
-                      <Smartphone size={24} />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="p-4 bg-green-500 text-white rounded-2xl">
+                        <Smartphone size={24} />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-gray-900 text-xl">ربط الواتساب</h4>
+                        <p className="text-sm text-gray-500 font-bold">اربط رقم الواتساب الخاص بك لإرسال الإشعارات</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-black text-gray-900 text-xl">إشعارات الواتساب</h4>
-                      <p className="text-sm text-gray-500 font-bold">استلم إشعارات نجاح أو فشل النشر على الواتساب</p>
+                    <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-xl">
+                      <div className="w-3 h-3 rounded-full bg-gray-400"></div>
+                      <span className="text-sm font-bold text-gray-600">غير متصل</span>
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">رقم الواتساب</label>
-                      <input 
-                        type="tel" 
-                        placeholder="05xxxxxxxx" 
-                        className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-green-500/10 focus:border-green-500 outline-none transition-all" 
-                        dir="ltr"
-                      />
-                      <p className="text-xs text-gray-400 px-2">سيتم إرسال إشعارات النشر لهذا الرقم</p>
+                    {/* QR Code Section */}
+                    <div className="bg-white p-6 rounded-2xl border border-gray-200 text-center space-y-4">
+                      <div className="w-48 h-48 mx-auto bg-gray-100 rounded-xl flex items-center justify-center">
+                        <div className="text-center">
+                          <Smartphone size={48} className="mx-auto text-gray-300 mb-2" />
+                          <p className="text-xs text-gray-400 font-bold">اضغط للحصول على QR Code</p>
+                        </div>
+                      </div>
+                      <button className="w-full bg-green-500 text-white py-3 rounded-xl font-bold hover:bg-green-600 transition-all">
+                        بدء الربط
+                      </button>
+                      <p className="text-xs text-gray-400">امسح الكود من تطبيق الواتساب على هاتفك</p>
                     </div>
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">تفعيل الإشعارات</label>
+                    
+                    {/* Settings Section */}
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">رقم المستلم</label>
+                        <input 
+                          type="tel" 
+                          placeholder="05xxxxxxxx" 
+                          className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-green-500/10 focus:border-green-500 outline-none transition-all" 
+                          dir="ltr"
+                        />
+                        <p className="text-xs text-gray-400 px-2">الرقم الذي ستصله إشعارات النشر</p>
+                      </div>
+                      
                       <div className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-2xl">
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input type="checkbox" className="sr-only peer" defaultChecked />
                           <div className="w-14 h-8 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:right-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-500 shadow-inner"></div>
                         </label>
-                        <span className="text-sm font-bold text-gray-700">إرسال إشعارات عند النشر</span>
+                        <span className="text-sm font-bold text-gray-700">تفعيل إشعارات النشر</span>
+                      </div>
+                      
+                      <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+                        <p className="text-xs text-blue-700 font-bold">
+                          💡 بعد الربط، ستصلك رسالة واتساب عند كل نشر ناجح أو فاشل
+                        </p>
                       </div>
                     </div>
                   </div>
