@@ -142,9 +142,6 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <div className="pt-4 mt-4 border-t border-gray-50">
               <p className="px-4 mb-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">إدارة الفريق</p>
               <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/team" icon={ShieldCheck} label="الفريق والنشاط" active={location.pathname === '/app/team'} />
-              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/integrations" icon={Grid} label="التكاملات" active={location.pathname === '/app/integrations'} />
-              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/extension-settings" icon={Puzzle} label="إعدادات الإضافة" active={location.pathname === '/app/extension-settings'} />
-              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/audit-logs" icon={ShieldAlert} label="سجل الرقابة" active={location.pathname === '/app/audit-logs'} />
             </div>
           </nav>
 
