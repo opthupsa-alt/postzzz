@@ -480,6 +480,72 @@ export class PublishingService {
     return { cancelled: jobsToCancel.length };
   }
 
+  async deleteJob(tenantId: string, userId: string, jobId: string) {
+    const job = await this.prisma.publishingJob.findFirst({
+      where: { id: jobId, tenantId },
+    });
+
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    // Only allow deleting cancelled or failed jobs
+    if (!['CANCELLED', 'FAILED'].includes(job.status)) {
+      throw new BadRequestException('Can only delete cancelled or failed jobs');
+    }
+
+    await this.prisma.publishingJob.delete({
+      where: { id: jobId },
+    });
+
+    await this.auditService.log({
+      tenantId,
+      userId,
+      action: 'JOB_DELETE',
+      entityType: 'PUBLISHING_JOB',
+      entityId: jobId,
+      metadata: { postId: job.postId, platform: job.platform },
+    });
+
+    return { success: true };
+  }
+
+  async deleteCancelledJobs(tenantId: string, userId: string, clientId?: string) {
+    const where: any = {
+      tenantId,
+      status: 'CANCELLED',
+    };
+
+    if (clientId) {
+      where.clientId = clientId;
+    }
+
+    const jobsToDelete = await this.prisma.publishingJob.findMany({
+      where,
+      select: { id: true },
+    });
+
+    if (jobsToDelete.length === 0) {
+      return { deleted: 0 };
+    }
+
+    await this.prisma.publishingJob.deleteMany({ where });
+
+    await this.auditService.log({
+      tenantId,
+      userId,
+      action: 'JOBS_DELETE_CANCELLED',
+      entityType: 'PUBLISHING_JOB',
+      entityId: 'bulk',
+      metadata: { 
+        count: jobsToDelete.length,
+        clientId: clientId || 'all',
+      },
+    });
+
+    return { deleted: jobsToDelete.length };
+  }
+
   // ==================== HELPER ====================
 
   private async updatePostStatusFromJobs(postId: string) {

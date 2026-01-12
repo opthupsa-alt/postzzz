@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Body,
   Param,
   Query,
@@ -78,6 +79,21 @@ export class PublishingController {
     @Query('clientId') clientId?: string,
   ) {
     const result = await this.publishingService.cancelAllJobs(user.tenantId, user.userId, clientId);
+    return { data: result };
+  }
+
+  @Delete('jobs/:id')
+  async deleteJob(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string) {
+    const result = await this.publishingService.deleteJob(user.tenantId, user.userId, id);
+    return { data: result };
+  }
+
+  @Delete('jobs/cancelled')
+  async deleteCancelledJobs(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('clientId') clientId?: string,
+  ) {
+    const result = await this.publishingService.deleteCancelledJobs(user.tenantId, user.userId, clientId);
     return { data: result };
   }
 }

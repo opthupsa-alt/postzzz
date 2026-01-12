@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Clock, CheckCircle, XCircle, RefreshCw, Eye, AlertCircle, Ban, Lock, StopCircle, Edit2 } from 'lucide-react';
+import { Send, Clock, CheckCircle, XCircle, RefreshCw, Eye, AlertCircle, Ban, Lock, StopCircle, Edit2, Trash2 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
-import { getPublishingJobs, cancelJob, cancelAllJobs, PublishingJob, PublishingJobStatus, JOB_STATUS_CONFIG } from '../lib/publishing-api';
+import { getPublishingJobs, cancelJob, cancelAllJobs, deleteJob, deleteCancelledJobs, PublishingJob, PublishingJobStatus, JOB_STATUS_CONFIG } from '../lib/publishing-api';
 import { getClients, Client, PLATFORM_CONFIG } from '../lib/clients-api';
 import { showToast } from '../components/NotificationToast';
 
@@ -95,6 +95,36 @@ const PublishingPage: React.FC = () => {
     }
   };
 
+  const handleDelete = async (jobId: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذه المهمة؟')) return;
+    try {
+      await deleteJob(jobId);
+      showToast('SUCCESS', 'تم الحذف', 'تم حذف المهمة بنجاح');
+      await loadJobs();
+    } catch (err: any) {
+      showToast('ERROR', 'خطأ', err.message || 'حدث خطأ أثناء الحذف');
+    }
+  };
+
+  const handleDeleteCancelled = async () => {
+    const cancelledCount = jobs.filter(j => j.status === 'CANCELLED').length;
+    
+    if (cancelledCount === 0) {
+      showToast('INFO', 'لا توجد مهام', 'لا توجد مهام ملغية لحذفها');
+      return;
+    }
+    
+    if (!confirm(`هل أنت متأكد من حذف ${cancelledCount} مهمة ملغية؟\n\nهذا الإجراء لا يمكن التراجع عنه.`)) return;
+    
+    try {
+      const result = await deleteCancelledJobs(selectedClientId || undefined);
+      showToast('SUCCESS', 'تم الحذف', `تم حذف ${result.deleted} مهمة ملغية`);
+      await loadJobs();
+    } catch (err: any) {
+      showToast('ERROR', 'خطأ', err.message || 'حدث خطأ أثناء الحذف');
+    }
+  };
+
   const filteredJobs = filter === 'all' 
     ? jobs 
     : jobs.filter(job => job.status === filter);
@@ -128,6 +158,15 @@ const PublishingPage: React.FC = () => {
               <StopCircle size={18} />
               إيقاف الكل
             </button>
+            {jobs.filter(j => j.status === 'CANCELLED').length > 0 && (
+              <button 
+                onClick={handleDeleteCancelled}
+                className="bg-gray-50 text-gray-600 px-4 py-3 rounded-xl font-bold hover:bg-gray-100 transition-colors flex items-center gap-2 border border-gray-200"
+              >
+                <Trash2 size={18} />
+                حذف الملغية ({jobs.filter(j => j.status === 'CANCELLED').length})
+              </button>
+            )}
           </div>
         }
       />
@@ -259,6 +298,15 @@ const PublishingPage: React.FC = () => {
                             <Ban size={18} />
                           </button>
                         </>
+                      )}
+                      {['CANCELLED', 'FAILED'].includes(job.status) && (
+                        <button 
+                          onClick={() => handleDelete(job.id)}
+                          className="p-2 hover:bg-red-50 rounded-lg transition-colors text-gray-400 hover:text-red-500"
+                          title="حذف المهمة"
+                        >
+                          <Trash2 size={18} />
+                        </button>
                       )}
                     </div>
                   </div>

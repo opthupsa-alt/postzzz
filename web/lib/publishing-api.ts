@@ -102,6 +102,20 @@ export async function cancelAllJobs(clientId?: string): Promise<{ cancelled: num
   return response.data;
 }
 
+export async function deleteJob(id: string): Promise<void> {
+  await apiRequest<ApiResponse<{ success: boolean }>>(`/publishing/jobs/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function deleteCancelledJobs(clientId?: string): Promise<{ deleted: number }> {
+  const params = clientId ? `?clientId=${clientId}` : '';
+  const response = await apiRequest<ApiResponse<{ deleted: number }>>(`/publishing/jobs/cancelled${params}`, {
+    method: 'DELETE',
+  });
+  return response.data;
+}
+
 // ==================== STATUS HELPERS ====================
 
 export const JOB_STATUS_CONFIG: Record<PublishingJobStatus, { label: string; color: string }> = {

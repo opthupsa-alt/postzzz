@@ -955,7 +955,17 @@ async function confirmPublishJob(jobId) {
 
 async function cancelPublishingJob(jobId) {
   try {
-    await apiRequest(`/publishing/jobs/${jobId}/cancel`, { method: 'POST' });
+    console.log('[Postzzz] Cancelling job:', jobId);
+    
+    // Get device ID
+    const storageData = await getStorageData([STORAGE_KEYS.DEVICE_ID]);
+    const deviceId = storageData[STORAGE_KEYS.DEVICE_ID];
+    
+    const response = await apiRequest(`/publishing/jobs/${jobId}/cancel`, { 
+      method: 'POST',
+      body: JSON.stringify({ deviceId }),
+    });
+    console.log('[Postzzz] Cancel response:', response);
     
     if (activePublishTab) {
       try { await chrome.tabs.remove(activePublishTab.id); } catch (e) {}
@@ -963,8 +973,15 @@ async function cancelPublishingJob(jobId) {
     }
     
     activePublishJob = null;
+    
+    // Remove from processed jobs so it doesn't get picked up again
+    if (processedJobIds) {
+      processedJobIds.add(jobId);
+    }
+    
     return { success: true };
   } catch (error) {
+    console.error('[Postzzz] Cancel failed:', error);
     return { success: false, error: error.message };
   }
 }
