@@ -760,6 +760,97 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
 // ==================== Setup ====================
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
+// ==================== Heartbeat ====================
+let heartbeatInterval = null;
+const HEARTBEAT_INTERVAL = 30000; // Send heartbeat every 30 seconds
+
+async function startHeartbeat() {
+  if (heartbeatInterval) return;
+  
+  console.log('[Postzzz] Starting heartbeat');
+  
+  // Send immediately
+  sendHeartbeat();
+  
+  // Then send periodically
+  heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+    console.log('[Postzzz] Heartbeat stopped');
+  }
+}
+
+async function sendHeartbeat() {
+  try {
+    const data = await getStorageData([STORAGE_KEYS.DEVICE_ID, STORAGE_KEYS.SELECTED_CLIENT_ID]);
+    const deviceId = data[STORAGE_KEYS.DEVICE_ID];
+    
+    if (!deviceId) {
+      console.log('[Postzzz] No device ID, registering device first');
+      await registerDeviceIfNeeded();
+      return;
+    }
+    
+    const response = await apiRequest(`/devices/${deviceId}/heartbeat`, {
+      method: 'POST',
+      body: JSON.stringify({
+        clientId: data[STORAGE_KEYS.SELECTED_CLIENT_ID] || undefined,
+        capabilities: {
+          assistMode: true,
+          autoMode: false,
+          platforms: ['X', 'INSTAGRAM', 'TIKTOK', 'LINKEDIN', 'THREADS'],
+        },
+        version: chrome.runtime.getManifest().version,
+      }),
+    });
+    
+    console.log('[Postzzz] Heartbeat sent successfully');
+    return response;
+  } catch (error) {
+    console.error('[Postzzz] Heartbeat failed:', error.message);
+    
+    // If device not found, re-register
+    if (error.message?.includes('404') || error.message?.includes('not found')) {
+      console.log('[Postzzz] Device not found, re-registering...');
+      await setStorageData({ [STORAGE_KEYS.DEVICE_ID]: null });
+      await registerDeviceIfNeeded();
+    }
+  }
+}
+
+async function registerDeviceIfNeeded() {
+  try {
+    const data = await getStorageData([STORAGE_KEYS.DEVICE_ID]);
+    if (data[STORAGE_KEYS.DEVICE_ID]) return;
+    
+    const response = await apiRequest('/devices/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Chrome Extension',
+        userAgent: navigator.userAgent,
+        version: chrome.runtime.getManifest().version,
+        capabilities: {
+          assistMode: true,
+          autoMode: false,
+          platforms: ['X', 'INSTAGRAM', 'TIKTOK', 'LINKEDIN', 'THREADS'],
+        },
+      }),
+    });
+    
+    const device = response?.data || response;
+    if (device?.id) {
+      await setStorageData({ [STORAGE_KEYS.DEVICE_ID]: device.id });
+      console.log('[Postzzz] Device registered:', device.id);
+    }
+  } catch (error) {
+    console.error('[Postzzz] Device registration failed:', error);
+  }
+}
+
 // ==================== Job Scheduler ====================
 let schedulerInterval = null;
 const SCHEDULER_CHECK_INTERVAL = 30000; // Check every 30 seconds
@@ -771,6 +862,9 @@ async function startScheduler() {
   schedulerInterval = setInterval(checkScheduledJobs, SCHEDULER_CHECK_INTERVAL);
   // Run immediately
   checkScheduledJobs();
+  
+  // Also start heartbeat
+  startHeartbeat();
 }
 
 function stopScheduler() {
@@ -779,6 +873,7 @@ function stopScheduler() {
     schedulerInterval = null;
     console.log('[Postzzz] Scheduler stopped');
   }
+  stopHeartbeat();
 }
 
 async function checkScheduledJobs() {

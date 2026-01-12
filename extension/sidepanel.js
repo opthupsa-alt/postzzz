@@ -105,15 +105,27 @@ function showApp(user) {
 }
 
 async function updateConnectionStatus() {
-  // Check auth state instead of WS status (WebSocket removed)
+  // Check device heartbeat status from API
   const authState = await sendMessage({ type: 'GET_AUTH_STATE' });
+  
+  if (!authState?.isAuthenticated) {
+    if (connectionStatus) {
+      connectionStatus.textContent = 'غير متصل';
+      connectionStatus.className = 'status-badge disconnected';
+    }
+    return;
+  }
+  
+  // Check if device is registered and online
+  const deviceStatus = await sendMessage({ type: 'GET_DEVICE_STATUS' });
+  
   if (connectionStatus) {
-    if (authState?.isAuthenticated) {
+    if (deviceStatus?.deviceId) {
       connectionStatus.textContent = 'متصل';
       connectionStatus.className = 'status-badge connected';
     } else {
-      connectionStatus.textContent = 'غير متصل';
-      connectionStatus.className = 'status-badge disconnected';
+      connectionStatus.textContent = 'جاري الاتصال...';
+      connectionStatus.className = 'status-badge connecting';
     }
   }
 }
