@@ -32,6 +32,11 @@ const ClientDetailPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'platforms' | 'posts' | 'team'>('platforms');
   const [showAddPlatform, setShowAddPlatform] = useState(false);
   const [addingPlatform, setAddingPlatform] = useState(false);
+  
+  // Platform modal state
+  const [showPlatformModal, setShowPlatformModal] = useState(false);
+  const [selectedPlatform, setSelectedPlatform] = useState<SocialPlatform | null>(null);
+  const [platformForm, setPlatformForm] = useState({ profileUrl: '', handle: '' });
 
   useEffect(() => {
     if (clientId) {
@@ -62,18 +67,53 @@ const ClientDetailPage: React.FC = () => {
     }
   };
 
-  const handleAddPlatform = async (platform: SocialPlatform) => {
+  const openPlatformModal = (platform: SocialPlatform) => {
+    setSelectedPlatform(platform);
+    setPlatformForm({ profileUrl: '', handle: '' });
+    setShowPlatformModal(true);
+    setShowAddPlatform(false);
+  };
+
+  const handleAddPlatform = async () => {
+    if (!selectedPlatform) return;
+    
+    // Validate profile URL
+    if (!platformForm.profileUrl.trim()) {
+      setError('رابط البروفايل مطلوب للتحقق من الحساب');
+      return;
+    }
+    
     try {
       setAddingPlatform(true);
-      const dto: CreatePlatformDto = { platform };
+      const dto: CreatePlatformDto = { 
+        platform: selectedPlatform,
+        profileUrl: platformForm.profileUrl.trim(),
+        handle: platformForm.handle.trim() || undefined,
+      };
       await createPlatform(clientId!, dto);
       await loadClient();
-      setShowAddPlatform(false);
+      setShowPlatformModal(false);
+      setSelectedPlatform(null);
+      setPlatformForm({ profileUrl: '', handle: '' });
     } catch (err: any) {
       setError(err.message || 'حدث خطأ أثناء إضافة المنصة');
     } finally {
       setAddingPlatform(false);
     }
+  };
+
+  const getProfileUrlPlaceholder = (platform: SocialPlatform): string => {
+    const placeholders: Record<SocialPlatform, string> = {
+      X: 'https://x.com/username',
+      INSTAGRAM: 'https://instagram.com/username',
+      FACEBOOK: 'https://facebook.com/username',
+      LINKEDIN: 'https://linkedin.com/in/username',
+      TIKTOK: 'https://tiktok.com/@username',
+      YOUTUBE: 'https://youtube.com/@handle',
+      THREADS: 'https://threads.net/@username',
+      SNAPCHAT: 'https://snapchat.com/add/username',
+    };
+    return placeholders[platform] || 'https://...';
   };
 
   const handleDeletePlatform = async (platformId: string) => {
@@ -241,7 +281,7 @@ const ClientDetailPage: React.FC = () => {
                   return (
                     <button
                       key={platform}
-                      onClick={() => handleAddPlatform(platform)}
+                      onClick={() => openPlatformModal(platform)}
                       disabled={addingPlatform}
                       className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50"
                     >
@@ -292,6 +332,17 @@ const ClientDetailPage: React.FC = () => {
                         </p>
                         {platform.handle && (
                           <p className="text-sm text-gray-500">@{platform.handle}</p>
+                        )}
+                        {platform.profileUrl && (
+                          <a 
+                            href={platform.profileUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+                          >
+                            <Link size={12} />
+                            رابط البروفايل
+                          </a>
                         )}
                       </div>
                     </div>
@@ -344,6 +395,109 @@ const ClientDetailPage: React.FC = () => {
           />
         </div>
       )}
+      
+      {/* Platform Add Modal */}
+      <PlatformModal
+        isOpen={showPlatformModal}
+        platform={selectedPlatform}
+        form={platformForm}
+        onFormChange={setPlatformForm}
+        onSubmit={handleAddPlatform}
+        onClose={() => {
+          setShowPlatformModal(false);
+          setSelectedPlatform(null);
+        }}
+        loading={addingPlatform}
+        getPlaceholder={getProfileUrlPlaceholder}
+      />
+    </div>
+  );
+};
+
+// Platform Add Modal
+const PlatformModal: React.FC<{
+  isOpen: boolean;
+  platform: SocialPlatform | null;
+  form: { profileUrl: string; handle: string };
+  onFormChange: (form: { profileUrl: string; handle: string }) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+  loading: boolean;
+  getPlaceholder: (platform: SocialPlatform) => string;
+}> = ({ isOpen, platform, form, onFormChange, onSubmit, onClose, loading, getPlaceholder }) => {
+  if (!isOpen || !platform) return null;
+  
+  const config = PLATFORM_CONFIG[platform];
+  const Icon = PLATFORM_ICONS[platform] || Globe;
+  
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl">
+        <div className="flex items-center gap-4 mb-6">
+          <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${config?.color || 'from-gray-500 to-gray-600'} flex items-center justify-center shadow-sm`}>
+            <Icon size={28} className="text-white" />
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-gray-900">إضافة {config?.name}</h3>
+            <p className="text-sm text-gray-500">أدخل معلومات الحساب</p>
+          </div>
+        </div>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">
+              رابط البروفايل <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="url"
+              value={form.profileUrl}
+              onChange={(e) => onFormChange({ ...form, profileUrl: e.target.value })}
+              placeholder={getPlaceholder(platform)}
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left dir-ltr"
+              dir="ltr"
+            />
+            <p className="text-xs text-gray-400 mt-1">مطلوب للتحقق من أن الحساب المتصل هو الصحيح</p>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">
+              اسم المستخدم (Handle)
+            </label>
+            <input
+              type="text"
+              value={form.handle}
+              onChange={(e) => onFormChange({ ...form, handle: e.target.value })}
+              placeholder="username"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-left dir-ltr"
+              dir="ltr"
+            />
+          </div>
+        </div>
+        
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors disabled:opacity-50"
+          >
+            إلغاء
+          </button>
+          <button
+            onClick={onSubmit}
+            disabled={loading || !form.profileUrl.trim()}
+            className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+            ) : (
+              <>
+                <Plus size={18} />
+                إضافة
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

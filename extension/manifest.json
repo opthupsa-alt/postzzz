@@ -75,7 +75,8 @@
         "config.js", 
         "config.production.js",
         "runner/*.js",
-        "runner/playbooks/*.js"
+        "runner/playbooks/*.js",
+        "platforms/*.js"
       ],
       "matches": ["<all_urls>"]
     }
