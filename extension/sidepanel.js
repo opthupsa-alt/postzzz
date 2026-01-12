@@ -132,6 +132,12 @@ async function loadRunnerUI() {
     // Load runner UI script
     const script = document.createElement('script');
     script.src = chrome.runtime.getURL('runner/runner-ui.js');
+    script.onload = () => {
+      // Initialize runner UI after script loads
+      if (window.PostzzzRunnerUI) {
+        window.PostzzzRunnerUI.init();
+      }
+    };
     document.body.appendChild(script);
   } catch (error) {
     console.error('[Postzzz] Failed to load runner UI:', error);
