@@ -5,7 +5,14 @@ import { AppModule } from './app.module';
 import * as basicAuth from 'express-basic-auth';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    bodyParser: true,
+  });
+
+  // Increase body size limit for file uploads
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.use(require('express').json({ limit: '100mb' }));
+  expressApp.use(require('express').urlencoded({ limit: '100mb', extended: true }));
 
   // Global validation pipe
   app.useGlobalPipes(

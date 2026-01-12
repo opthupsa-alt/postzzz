@@ -25,16 +25,26 @@ export class MediaService {
       throw new BadRequestException('No file provided');
     }
 
-    // Security: Validate file size (max 5MB for screenshots)
-    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
-    if (file.size > MAX_SIZE) {
-      throw new BadRequestException('File too large (max 5MB)');
+    // Determine media type
+    const isVideo = file.mimetype.startsWith('video/');
+    const isImage = file.mimetype.startsWith('image/');
+
+    // Security: Validate file size
+    const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB for images
+    const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB for videos
+    const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+    
+    if (file.size > maxSize) {
+      throw new BadRequestException(`File too large (max ${isVideo ? '100MB' : '10MB'})`);
     }
 
     // Security: Validate mime type
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+    const allowedImageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo'];
+    const allowedTypes = [...allowedImageTypes, ...allowedVideoTypes];
+    
     if (!allowedTypes.includes(file.mimetype)) {
-      throw new BadRequestException('Invalid file type (only PNG, JPEG, WebP allowed)');
+      throw new BadRequestException('Invalid file type (only PNG, JPEG, WebP, GIF, MP4, WebM allowed)');
     }
 
     // For now, store as base64 in database (simple approach)
@@ -42,11 +52,13 @@ export class MediaService {
     const base64Data = file.buffer.toString('base64');
     const dataUrl = `data:${file.mimetype};base64,${base64Data}`;
 
+    const mediaType = isVideo ? 'VIDEO' : 'IMAGE';
+
     const asset = await this.prisma.mediaAsset.create({
       data: {
         tenantId,
         uploadedById: userId,
-        type: 'IMAGE',
+        type: mediaType,
         url: dataUrl,
         mimeType: file.mimetype,
         size: file.size,
@@ -59,7 +71,7 @@ export class MediaService {
       action: 'MEDIA_UPLOAD',
       entityType: 'MEDIA_ASSET',
       entityId: asset.id,
-      metadata: { type: 'IMAGE', size: file.size },
+      metadata: { type: mediaType, size: file.size },
     });
 
     return asset;

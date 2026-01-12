@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
-  ArrowRight, Save, Send, Image, Video, 
+  ArrowRight, Save, Send, Image, Video, X, Loader2,
   Instagram, Facebook, Twitter, Linkedin, Clock, AlertCircle,
   Youtube, AtSign, Music2, Ghost, CheckCircle
 } from 'lucide-react';
@@ -12,6 +12,7 @@ import {
   submitForApproval, approvePost, schedulePost,
   Post, CreateVariantDto, POST_STATUS_CONFIG
 } from '../lib/posts-api';
+import { uploadMedia, MediaAsset } from '../lib/media-api';
 
 const PLATFORM_ICONS: Record<string, React.ElementType> = {
   X: Twitter,
@@ -37,10 +38,13 @@ const PostEditorPage: React.FC = () => {
   const [selectedClient, setSelectedClient] = useState('');
   const [title, setTitle] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>([]);
-  const [variantContents, setVariantContents] = useState<Record<SocialPlatform, { caption: string; hashtags: string }>>({} as any);
+  const [variantContents, setVariantContents] = useState<Record<SocialPlatform, { caption: string; hashtags: string; mediaAssets: MediaAsset[] }>>({} as any);
   const [scheduledAt, setScheduledAt] = useState('');
   const [clients, setClients] = useState<Client[]>([]);
   const [activeVariantTab, setActiveVariantTab] = useState<SocialPlatform | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadData();
@@ -67,11 +71,12 @@ const PostEditorPage: React.FC = () => {
         const platforms = postData.variants?.map(v => v.platform) || [];
         setSelectedPlatforms(platforms);
         
-        const contents: Record<SocialPlatform, { caption: string; hashtags: string }> = {} as any;
+        const contents: Record<SocialPlatform, { caption: string; hashtags: string; mediaAssets: MediaAsset[] }> = {} as any;
         postData.variants?.forEach(v => {
           contents[v.platform] = {
             caption: v.caption || '',
             hashtags: v.hashtags || '',
+            mediaAssets: [], // TODO: Load existing media assets
           };
         });
         setVariantContents(contents);
@@ -108,7 +113,7 @@ const PostEditorPage: React.FC = () => {
         if (!variantContents[platformId]) {
           setVariantContents(prev => ({
             ...prev,
-            [platformId]: { caption: '', hashtags: '' },
+            [platformId]: { caption: '', hashtags: '', mediaAssets: [] },
           }));
         }
         return [...prev, platformId];
@@ -122,6 +127,55 @@ const PostEditorPage: React.FC = () => {
       [platform]: {
         ...prev[platform],
         [field]: value,
+      },
+    }));
+  };
+
+  const handleMediaUpload = async (file: File) => {
+    if (!activeVariantTab) return;
+    
+    setUploadingMedia(true);
+    setError(null);
+    
+    try {
+      const asset = await uploadMedia(file);
+      
+      setVariantContents(prev => ({
+        ...prev,
+        [activeVariantTab]: {
+          ...prev[activeVariantTab],
+          mediaAssets: [...(prev[activeVariantTab]?.mediaAssets || []), asset],
+        },
+      }));
+    } catch (err: any) {
+      setError(err.message || 'فشل رفع الملف');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleMediaUpload(file);
+    }
+    e.target.value = ''; // Reset input
+  };
+
+  const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleMediaUpload(file);
+    }
+    e.target.value = ''; // Reset input
+  };
+
+  const removeMedia = (platform: SocialPlatform, assetId: string) => {
+    setVariantContents(prev => ({
+      ...prev,
+      [platform]: {
+        ...prev[platform],
+        mediaAssets: prev[platform]?.mediaAssets?.filter(a => a.id !== assetId) || [],
       },
     }));
   };
@@ -148,6 +202,7 @@ const PostEditorPage: React.FC = () => {
           platform,
           caption: variantContents[platform]?.caption || '',
           hashtags: variantContents[platform]?.hashtags || '',
+          mediaAssetIds: variantContents[platform]?.mediaAssets?.map(a => a.id) || [],
         }));
 
         savedPost = await createPost({
@@ -164,6 +219,7 @@ const PostEditorPage: React.FC = () => {
           platform,
           caption: variantContents[platform]?.caption || '',
           hashtags: variantContents[platform]?.hashtags || '',
+          mediaAssetIds: variantContents[platform]?.mediaAssets?.map(a => a.id) || [],
         }));
         await upsertVariants(postId, variants);
       }
@@ -372,14 +428,78 @@ const PostEditorPage: React.FC = () => {
                     />
                   </div>
 
+                  {/* Media Preview */}
+                  {variantContents[activeVariantTab]?.mediaAssets?.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {variantContents[activeVariantTab].mediaAssets.map((asset) => (
+                        <div key={asset.id} className="relative group">
+                          {asset.type === 'VIDEO' ? (
+                            <video 
+                              src={asset.url} 
+                              className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+                            />
+                          ) : (
+                            <img 
+                              src={asset.url} 
+                              alt="Media" 
+                              className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+                            />
+                          )}
+                          <button
+                            onClick={() => removeMedia(activeVariantTab, asset.id)}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Media Upload Buttons */}
                   <div className="flex items-center gap-2 pt-2">
-                    <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                      <Image size={20} className="text-gray-400" />
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                    />
+                    <input
+                      ref={videoInputRef}
+                      type="file"
+                      accept="video/*"
+                      onChange={handleVideoSelect}
+                      className="hidden"
+                    />
+                    <button 
+                      onClick={() => imageInputRef.current?.click()}
+                      disabled={uploadingMedia}
+                      className="p-2 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                      title="إضافة صورة"
+                    >
+                      <Image size={20} className="text-blue-500" />
                     </button>
-                    <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                      <Video size={20} className="text-gray-400" />
+                    <button 
+                      onClick={() => videoInputRef.current?.click()}
+                      disabled={uploadingMedia}
+                      className="p-2 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
+                      title="إضافة فيديو"
+                    >
+                      <Video size={20} className="text-purple-500" />
                     </button>
-                    <span className="text-xs text-gray-400 mr-auto">إضافة وسائط (قريباً)</span>
+                    {uploadingMedia ? (
+                      <span className="text-xs text-blue-500 mr-auto flex items-center gap-1">
+                        <Loader2 size={14} className="animate-spin" />
+                        جاري الرفع...
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400 mr-auto">
+                        {variantContents[activeVariantTab]?.mediaAssets?.length 
+                          ? `${variantContents[activeVariantTab].mediaAssets.length} ملف مرفق`
+                          : 'إضافة صور أو فيديو'}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
