@@ -1,5 +1,5 @@
 /**
- * Leedz API Client
+ * Postzzz API Client
  * Handles all API communication with token management
  */
 

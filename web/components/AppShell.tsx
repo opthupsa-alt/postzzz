@@ -2,10 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
-  LayoutDashboard, Search, Users, ListTodo, MessageSquare, 
-  Settings, LogOut, Bell, Zap, ShieldAlert, Menu, X, 
-  Smartphone, ShieldCheck, Grid, Globe, Check, Trash2, Clock,
-  Command, Search as SearchIcon, Activity, Database, AlertCircle, Puzzle,
+  LayoutDashboard, Settings, LogOut, Bell, Zap, ShieldAlert, Menu,
+  Smartphone, ShieldCheck, Grid, Globe,
+  Command, Search as SearchIcon, Activity, Puzzle,
   Building2, Calendar, Send
 } from 'lucide-react';
 import JobProgressWidget from './JobProgressWidget';
@@ -50,9 +49,9 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }, []);
 
   const notifications = [
-    { id: 1, text: 'اكتمل البحث الذكي لـ "مطاعم الرياض"', time: 'منذ 5 دقائق', icon: Search, color: 'text-blue-600 bg-blue-50' },
-    { id: 2, text: 'تم إرسال رسالة واتساب بنجاح لشركة أرامكو', time: 'منذ ساعة', icon: MessageSquare, color: 'text-green-600 bg-green-50' },
-    { id: 3, text: 'تقرير مبيعات جديد متاح لشركة سابك', time: 'منذ ساعتين', icon: Zap, color: 'text-orange-600 bg-orange-50' },
+    { id: 1, text: 'تم نشر منشور بنجاح على X', time: 'منذ 5 دقائق', icon: Send, color: 'text-blue-600 bg-blue-50' },
+    { id: 2, text: 'تم جدولة 3 منشورات جديدة', time: 'منذ ساعة', icon: Calendar, color: 'text-green-600 bg-green-50' },
+    { id: 3, text: 'جهاز جديد متصل بالنظام', time: 'منذ ساعتين', icon: Smartphone, color: 'text-orange-600 bg-orange-50' },
   ];
 
   return (
@@ -85,9 +84,9 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-4 mb-3">مقترحات سريعة</p>
                <div className="space-y-1">
                  {[
-                   { label: 'البحث عن عملاء جدد', icon: Search, path: '/app/prospecting' },
-                   { label: 'عرض القوائم الذكية', icon: ListTodo, path: '/app/lists' },
-                   { label: 'إعدادات الفريق', icon: ShieldCheck, path: '/app/team' },
+                   { label: 'إدارة العملاء', icon: Building2, path: '/app/clients' },
+                   { label: 'جدولة المنشورات', icon: Calendar, path: '/app/posts' },
+                   { label: 'متابعة النشر', icon: Send, path: '/app/publishing' },
                  ].map((item, i) => (
                    <button 
                     key={i} 
@@ -121,7 +120,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 <Zap size={24} fill="currentColor" />
               </div>
               <div>
-                <h1 className="text-2xl font-black text-gray-900 tracking-tight leading-none">ليدززز</h1>
+                <h1 className="text-2xl font-black text-gray-900 tracking-tight leading-none">بوستزز</h1>
                 <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1">PRO PLATFORM</p>
               </div>
             </div>
@@ -139,14 +138,6 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/devices" icon={Smartphone} label="الأجهزة" active={location.pathname === '/app/devices'} />
             </div>
             
-            {/* Legacy Navigation (hidden when searchDisabled) */}
-            <div className="pt-4 mt-4 border-t border-gray-50">
-              <p className="px-4 mb-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">أدوات البحث</p>
-              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/prospecting" icon={Search} label="البحث عن عملاء" active={location.pathname === '/app/prospecting'} />
-              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/leads" icon={Users} label="العملاء المحتملين" active={location.pathname === '/app/leads' || (location.pathname.startsWith('/app/leads/') && !location.pathname.includes('companies') && !['new', 'import'].includes(location.pathname.split('/').pop() || ''))} />
-              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/lists" icon={ListTodo} label="القوائم الذكية" active={location.pathname === '/app/lists' || location.pathname.startsWith('/app/lists/')} />
-              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/whatsapp" icon={MessageSquare} label="رسائل واتساب" active={location.pathname === '/app/whatsapp'} />
-            </div>
             
             <div className="pt-4 mt-4 border-t border-gray-50">
               <p className="px-4 mb-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">إدارة الفريق</p>
@@ -189,7 +180,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                className="hidden md:flex items-center gap-3 bg-gray-50 px-6 py-2.5 rounded-2xl border border-gray-100 text-gray-400 hover:bg-gray-100 transition-all hover:border-blue-200"
              >
                 <SearchIcon size={18} />
-                <span className="text-sm font-bold">ابحث في ليدززز...</span>
+                <span className="text-sm font-bold">ابحث في بوستزز...</span>
                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-white border border-gray-200 rounded-lg text-[9px] font-black uppercase">
                   <Command size={10} /> K
                 </div>
