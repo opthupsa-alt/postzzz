@@ -17,16 +17,19 @@ const PLATFORM_URLS = {
 
 // ==================== Login Detection Selectors ====================
 // These selectors indicate a logged-in state
+// Strategy: Use data-testid/aria-label first, then fallback to class selectors
 const LOGIN_SELECTORS = {
   X: {
     loggedIn: [
       '[data-testid="SideNav_AccountSwitcher_Button"]',
       '[data-testid="AppTabBar_Home_Link"]',
       'a[href="/compose/tweet"]',
+      '[aria-label="Profile"]',
     ],
     loggedOut: [
       '[data-testid="loginButton"]',
       'a[href="/login"]',
+      '[data-testid="login"]',
     ],
   },
   INSTAGRAM: {
@@ -34,31 +37,46 @@ const LOGIN_SELECTORS = {
       'svg[aria-label="Home"]',
       'a[href="/direct/inbox/"]',
       '[aria-label="New post"]',
+      'svg[aria-label="الصفحة الرئيسية"]', // Arabic
     ],
     loggedOut: [
       'input[name="username"]',
-      'button[type="submit"]:has-text("Log in")',
+      'button[type="submit"]',
+      '[data-testid="login-button"]',
     ],
   },
   TIKTOK: {
     loggedIn: [
       '[data-e2e="upload-icon"]',
       '[data-e2e="profile-icon"]',
+      '[aria-label="Upload video"]',
     ],
     loggedOut: [
       '[data-e2e="top-login-button"]',
-      'button:has-text("Log in")',
+      'button[data-e2e="login-button"]',
     ],
   },
   LINKEDIN: {
+    // Primary selectors (most reliable)
     loggedIn: [
-      '.global-nav__me',
       '[data-control-name="nav.settings"]',
+      '.global-nav__me-photo',
+      'button[aria-label="Start a post"]',
       '.share-box-feed-entry__trigger',
+      '[data-test-id="nav-settings"]',
+      '.feed-identity-module__actor-meta',
+    ],
+    // Fallback selectors
+    loggedInFallback: [
+      '.global-nav__me',
+      'img.global-nav__me-photo',
+      '.feed-shared-actor__meta',
     ],
     loggedOut: [
       '.sign-in-form__sign-in-cta',
       'a[href*="login"]',
+      'button[data-id="sign-in-form__submit-btn"]',
+      '.authwall-join-form',
     ],
   },
   THREADS: {
@@ -104,21 +122,31 @@ const LOGIN_SELECTORS = {
 
 /**
  * Check login status for a platform by injecting script into tab
+ * Returns detailed result with evidence
  */
 async function checkPlatformLogin(platform) {
   const url = PLATFORM_URLS[platform];
   if (!url) {
-    return { platform, status: 'UNKNOWN', error: 'Unknown platform' };
+    return { 
+      platform, 
+      loggedIn: false, 
+      status: 'UNKNOWN', 
+      error: 'Unknown platform',
+      evidence: null,
+      url: null,
+    };
   }
   
   try {
     // Find existing tab or create one
     const tabs = await chrome.tabs.query({ url: `${url}/*` });
     let tab = tabs[0];
+    let tabCreated = false;
     
     if (!tab) {
       // Open platform in background tab
       tab = await chrome.tabs.create({ url, active: false });
+      tabCreated = true;
       // Wait for page to load
       await waitForTabLoad(tab.id, 10000);
     }
@@ -133,42 +161,101 @@ async function checkPlatformLogin(platform) {
     const result = results[0]?.result;
     
     if (result?.loggedIn) {
-      return { platform, status: 'LOGGED_IN', tabId: tab.id };
+      return { 
+        platform, 
+        loggedIn: true,
+        status: 'LOGGED_IN', 
+        tabId: tab.id,
+        evidence: result.matchedSelector,
+        url: tab.url,
+      };
     } else if (result?.loggedOut) {
-      return { platform, status: 'NEEDS_LOGIN', tabId: tab.id };
+      return { 
+        platform, 
+        loggedIn: false,
+        status: 'NEEDS_LOGIN', 
+        tabId: tab.id,
+        evidence: result.matchedSelector,
+        url: tab.url,
+      };
     } else {
-      return { platform, status: 'UNKNOWN', tabId: tab.id };
+      // Unknown state - log for debugging
+      console.warn(`[Postzzz] Unknown login state for ${platform}`, result);
+      return { 
+        platform, 
+        loggedIn: null,
+        status: 'UNKNOWN', 
+        tabId: tab.id,
+        evidence: null,
+        url: tab.url,
+        debug: result,
+      };
     }
   } catch (error) {
     console.error(`[Postzzz] Login check failed for ${platform}:`, error);
-    return { platform, status: 'ERROR', error: error.message };
+    return { 
+      platform, 
+      loggedIn: null,
+      status: 'ERROR', 
+      error: error.message,
+      evidence: null,
+      url: null,
+    };
   }
 }
 
 /**
  * Function injected into page to detect login status
+ * Returns detailed result with matched selector
  */
 function detectLoginStatus(selectors) {
-  const result = { loggedIn: false, loggedOut: false };
+  const result = { 
+    loggedIn: false, 
+    loggedOut: false, 
+    matchedSelector: null,
+    checkedSelectors: [],
+  };
   
-  // Check logged-in selectors
+  // Check logged-in selectors (primary)
   for (const selector of selectors.loggedIn || []) {
     try {
+      result.checkedSelectors.push({ selector, type: 'loggedIn' });
       if (document.querySelector(selector)) {
         result.loggedIn = true;
-        break;
+        result.matchedSelector = selector;
+        return result;
       }
-    } catch (e) {}
+    } catch (e) {
+      result.checkedSelectors.push({ selector, type: 'loggedIn', error: e.message });
+    }
+  }
+  
+  // Check logged-in fallback selectors
+  for (const selector of selectors.loggedInFallback || []) {
+    try {
+      result.checkedSelectors.push({ selector, type: 'loggedInFallback' });
+      if (document.querySelector(selector)) {
+        result.loggedIn = true;
+        result.matchedSelector = selector;
+        return result;
+      }
+    } catch (e) {
+      result.checkedSelectors.push({ selector, type: 'loggedInFallback', error: e.message });
+    }
   }
   
   // Check logged-out selectors
   for (const selector of selectors.loggedOut || []) {
     try {
+      result.checkedSelectors.push({ selector, type: 'loggedOut' });
       if (document.querySelector(selector)) {
         result.loggedOut = true;
-        break;
+        result.matchedSelector = selector;
+        return result;
       }
-    } catch (e) {}
+    } catch (e) {
+      result.checkedSelectors.push({ selector, type: 'loggedOut', error: e.message });
+    }
   }
   
   return result;

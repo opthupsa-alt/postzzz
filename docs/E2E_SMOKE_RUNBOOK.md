@@ -119,3 +119,78 @@
 - [ ] No stuck jobs after 5 minutes
 - [ ] Proof screenshot visible in /app/publishing
 - [ ] Run this test **twice consecutively** with success
+
+---
+
+## LinkedIn Platform - Assist Mode
+
+### Preconditions (LinkedIn-specific)
+- [ ] Logged in to LinkedIn (linkedin.com) in same browser
+- [ ] Extension login check shows LinkedIn as "متصل" (LOGGED_IN)
+- [ ] Client has LINKEDIN platform configured
+
+### Test Flow (10 minutes)
+
+#### Step 1: Create Post Draft
+```
+1. Go to /app/posts/new
+2. Select test client
+3. Add title: "LinkedIn Smoke Test [timestamp]"
+4. Select platform: LINKEDIN
+5. Fill variant content:
+   - Caption: "Testing Postzzz publishing automation #postzzz #automation"
+   - Hashtags: "#test #linkedin"
+6. Click "حفظ المنشور" (Save)
+7. Verify: Post created with status DRAFT
+```
+
+#### Step 2: Workflow
+```
+1. Submit for Approval → Approve → Schedule (NOW + 2 min)
+2. Verify: Job created in /app/publishing with status QUEUED
+```
+
+#### Step 3: Extension Claims Job
+```
+1. Wait for job polling
+2. Verify: Job appears in extension inbox
+3. Click job → START
+4. Verify: Extension opens LinkedIn feed
+5. Verify: "Start a post" clicked, composer opens
+6. Verify: Content filled in editor
+7. Verify: Extension shows "انتظار التأكيد"
+```
+
+#### Step 4: Confirm Publish
+```
+1. Click "تأكيد النشر" in extension
+2. Verify: Post button clicked
+3. Verify: LinkedIn shows success toast
+4. Verify: Proof screenshot captured
+```
+
+#### Step 5: Verify Results
+```
+1. Go to /app/publishing
+2. Verify: Job status = SUCCEEDED
+3. Verify: Proof screenshot exists
+4. Go to LinkedIn and verify post visible
+5. Verify: Post status = PUBLISHED
+```
+
+### LinkedIn-specific Notes
+- LinkedIn doesn't expose post URL easily after publish
+- publishedUrl may be null - proof screenshot is mandatory
+- Rate limiting may occur if posting too frequently
+
+---
+
+## Error Codes Reference
+
+| Code | Description | Action |
+|------|-------------|--------|
+| NEEDS_LOGIN | User not logged in | Log in to platform |
+| SELECTOR_NOT_FOUND | DOM element missing | Update playbook selectors |
+| UPLOAD_FAILED | Media upload failed | Check file size/format |
+| RATE_LIMITED | Platform rate limit | Wait and retry |
+| UNKNOWN | Unexpected error | Check logs and proof |
