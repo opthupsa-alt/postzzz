@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Building2, Search, MoreHorizontal, Globe, AlertCircle } from 'lucide-react';
+import { Plus, Building2, Search, MoreHorizontal, Globe, AlertCircle, Eye, Edit, Trash2, Archive } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import DataTable from '../components/DataTable';
 import EmptyState from '../components/EmptyState';
-import { getClients, Client } from '../lib/clients-api';
+import { getClients, deleteClient, updateClient, Client } from '../lib/clients-api';
 
 const ClientsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -12,9 +12,17 @@ const ClientsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
   useEffect(() => {
     loadClients();
+  }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setOpenDropdown(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
   const loadClients = async () => {
@@ -33,6 +41,31 @@ const ClientsPage: React.FC = () => {
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleDelete = async (client: Client) => {
+    if (window.confirm(`هل أنت متأكد من حذف العميل "${client.name}"؟`)) {
+      try {
+        await deleteClient(client.id);
+        setClients(clients.filter(c => c.id !== client.id));
+        setOpenDropdown(null);
+      } catch (err: any) {
+        alert(err.message || 'حدث خطأ أثناء حذف العميل');
+      }
+    }
+  };
+
+  const handleArchive = async (client: Client) => {
+    try {
+      const newStatus = client.status === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE';
+      await updateClient(client.id, { status: newStatus });
+      setClients(clients.map(c => 
+        c.id === client.id ? { ...c, status: newStatus } : c
+      ));
+      setOpenDropdown(null);
+    } catch (err: any) {
+      alert(err.message || 'حدث خطأ أثناء تحديث حالة العميل');
+    }
+  };
 
   if (loading) {
     return (
@@ -149,9 +182,65 @@ const ClientsPage: React.FC = () => {
           ]}
           onRowClick={(client) => navigate(`/app/clients/${client.id}`)}
           actions={(client) => (
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-              <MoreHorizontal size={18} className="text-gray-400" />
-            </button>
+            <div className="relative">
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpenDropdown(openDropdown === client.id ? null : client.id);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <MoreHorizontal size={18} className="text-gray-400" />
+              </button>
+              
+              {openDropdown === client.id && (
+                <div className="absolute left-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 min-w-[160px]">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/app/clients/${client.id}`);
+                      setOpenDropdown(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-50 text-right"
+                  >
+                    <Eye size={16} />
+                    <span className="font-medium">عرض التفاصيل</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/app/clients/${client.id}/edit`);
+                      setOpenDropdown(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-50 text-right"
+                  >
+                    <Edit size={16} />
+                    <span className="font-medium">تعديل</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleArchive(client);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-gray-700 hover:bg-gray-50 text-right"
+                  >
+                    <Archive size={16} />
+                    <span className="font-medium">{client.status === 'ACTIVE' ? 'أرشفة' : 'تفعيل'}</span>
+                  </button>
+                  <div className="border-t border-gray-100 my-1"></div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(client);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-red-600 hover:bg-red-50 text-right"
+                  >
+                    <Trash2 size={16} />
+                    <span className="font-medium">حذف</span>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         />
       )}
