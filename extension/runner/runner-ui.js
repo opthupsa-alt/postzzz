@@ -163,12 +163,21 @@ async function checkDeviceRegistration() {
     
     if (response.deviceId) {
       updateDeviceStatus('online', 'الجهاز متصل');
+      console.log('[Runner UI] Device already registered:', response.deviceId);
     } else {
-      updateDeviceStatus('offline', 'الجهاز غير مسجل');
-      // Auto-register device
-      await sendRunnerMessage({ type: 'REGISTER_DEVICE' });
+      updateDeviceStatus('offline', 'جاري تسجيل الجهاز...');
+      // Register device only if not already registered
+      const registerResult = await sendRunnerMessage({ type: 'REGISTER_DEVICE' });
+      if (registerResult.success) {
+        updateDeviceStatus('online', 'الجهاز متصل');
+        console.log('[Runner UI] Device registered:', registerResult.device?.id);
+      } else {
+        updateDeviceStatus('error', 'فشل تسجيل الجهاز');
+        console.error('[Runner UI] Device registration failed:', registerResult.error);
+      }
     }
   } catch (error) {
+    console.error('[Runner UI] Device check error:', error);
     updateDeviceStatus('error', 'خطأ في الاتصال');
   }
 }

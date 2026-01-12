@@ -105,9 +105,10 @@ function showApp(user) {
 }
 
 async function updateConnectionStatus() {
-  const status = await sendMessage({ type: 'GET_WS_STATUS' });
+  // Check auth state instead of WS status (WebSocket removed)
+  const authState = await sendMessage({ type: 'GET_AUTH_STATE' });
   if (connectionStatus) {
-    if (status?.connected) {
+    if (authState?.isAuthenticated) {
       connectionStatus.textContent = 'متصل';
       connectionStatus.className = 'status-badge connected';
     } else {
