@@ -474,6 +474,15 @@ async function startPublishingJob(jobId) {
   try {
     console.log('[Postzzz] Starting job:', jobId);
     
+    // Get device ID
+    const storageData = await getStorageData([STORAGE_KEYS.DEVICE_ID]);
+    const deviceId = storageData[STORAGE_KEYS.DEVICE_ID];
+    
+    if (!deviceId) {
+      console.error('[Postzzz] No device ID');
+      return { success: false, error: 'No device ID' };
+    }
+    
     const response = await apiRequest(`/publishing/jobs/${jobId}`);
     const job = response?.data || response;
     if (!job) {
@@ -486,6 +495,31 @@ async function startPublishingJob(jobId) {
     const platformConfig = PLATFORMS[job.platform];
     if (!platformConfig) {
       return { success: false, error: 'Unsupported platform: ' + job.platform };
+    }
+    
+    // Claim the job if not already claimed
+    if (job.status === 'QUEUED') {
+      try {
+        await apiRequest('/publishing/jobs/claim', {
+          method: 'POST',
+          body: JSON.stringify({ deviceId, limit: 1 }),
+        });
+        console.log('[Postzzz] Job claimed');
+      } catch (e) {
+        console.log('[Postzzz] Claim failed, may already be claimed:', e.message);
+      }
+    }
+    
+    // Start the job on API
+    try {
+      await apiRequest(`/publishing/jobs/${jobId}/start`, {
+        method: 'POST',
+        body: JSON.stringify({ deviceId }),
+      });
+      console.log('[Postzzz] Job started on API');
+    } catch (e) {
+      console.log('[Postzzz] Start failed:', e.message);
+      // Continue anyway - might already be started
     }
     
     // Open compose page
@@ -515,6 +549,39 @@ async function startPublishingJob(jobId) {
     
     if (!fillResult.success) {
       console.error('[Postzzz] Failed to fill content:', fillResult.error);
+      // Report failure
+      try {
+        await apiRequest(`/publishing/jobs/${jobId}/complete`, {
+          method: 'POST',
+          body: JSON.stringify({
+            deviceId,
+            status: 'FAILED',
+            errorCode: 'FILL_FAILED',
+            errorMessage: fillResult.error || 'Failed to fill content',
+          }),
+        });
+      } catch (e) {
+        console.error('[Postzzz] Failed to report error:', e);
+      }
+      return { success: false, error: fillResult.error };
+    }
+    
+    // If no media, auto-complete after a delay (assuming auto-post worked)
+    if (!fillResult.hasMedia) {
+      setTimeout(async () => {
+        try {
+          await apiRequest(`/publishing/jobs/${jobId}/complete`, {
+            method: 'POST',
+            body: JSON.stringify({
+              deviceId,
+              status: 'SUCCEEDED',
+            }),
+          });
+          console.log('[Postzzz] Job completed successfully');
+        } catch (e) {
+          console.error('[Postzzz] Failed to complete job:', e);
+        }
+      }, 5000);
     }
     
     return { success: true, message: 'Content filled. Please review and click Post.' };
@@ -905,14 +972,24 @@ async function checkScheduledJobs() {
     const authState = await getAuthState();
     if (!authState.isAuthenticated) return;
     
-    // Get jobs that are due now
+    // Get jobs that are due now (scheduledAt <= now)
     const now = new Date().toISOString();
-    const response = await apiRequest(`/publishing/jobs?status=QUEUED&scheduledBefore=${now}&limit=5`);
+    const response = await apiRequest(`/publishing/jobs?status=QUEUED&to=${encodeURIComponent(now)}`);
     const jobs = response?.data || response || [];
     
     if (!Array.isArray(jobs) || jobs.length === 0) return;
     
     console.log(`[Postzzz] Found ${jobs.length} scheduled jobs ready to publish`);
+    
+    // Get device ID for claiming
+    const storageData = await getStorageData([STORAGE_KEYS.DEVICE_ID]);
+    const deviceId = storageData[STORAGE_KEYS.DEVICE_ID];
+    
+    if (!deviceId) {
+      console.log('[Postzzz] No device ID, registering device first');
+      await registerDevice();
+      return;
+    }
     
     // Process jobs one by one
     for (const job of jobs) {
@@ -933,8 +1010,46 @@ async function checkScheduledJobs() {
           
           if (!cookie || !cookie.value) {
             console.log(`[Postzzz] Not logged in to ${job.platform}, skipping job`);
+            // Claim, start, then report NEEDS_LOGIN status
+            try {
+              // Claim the job
+              await apiRequest('/publishing/jobs/claim', {
+                method: 'POST',
+                body: JSON.stringify({ deviceId, limit: 1 }),
+              });
+              // Start the job
+              await apiRequest(`/publishing/jobs/${job.id}/start`, {
+                method: 'POST',
+                body: JSON.stringify({ deviceId }),
+              });
+              // Complete with NEEDS_LOGIN
+              await apiRequest(`/publishing/jobs/${job.id}/complete`, {
+                method: 'POST',
+                body: JSON.stringify({
+                  deviceId,
+                  status: 'NEEDS_LOGIN',
+                  errorCode: 'NOT_LOGGED_IN',
+                  errorMessage: `Not logged in to ${job.platform}`,
+                }),
+              });
+            } catch (e) {
+              console.error('[Postzzz] Failed to report NEEDS_LOGIN:', e);
+            }
             continue;
           }
+        }
+        
+        // Claim the job first
+        try {
+          await apiRequest('/publishing/jobs/claim', {
+            method: 'POST',
+            body: JSON.stringify({
+              deviceId,
+              limit: 1,
+            }),
+          });
+        } catch (e) {
+          console.log('[Postzzz] Could not claim job, may already be claimed');
         }
         
         // Start the job

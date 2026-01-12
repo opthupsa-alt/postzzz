@@ -327,6 +327,14 @@ export class PublishingService {
           lastErrorMessage: dto.errorMessage,
         },
       });
+
+      // Send WhatsApp notification for NEEDS_LOGIN
+      this.notificationService.notifyPostPublishResult(
+        job.postId,
+        job.platform,
+        'FAILED',
+        `يحتاج تسجيل دخول إلى ${job.platform}`,
+      ).catch(err => console.error('Notification error:', err));
     } else {
       // FAILED - check retry
       const newAttemptCount = job.attemptCount + 1;
