@@ -13,49 +13,37 @@ let platformConfig = {
   extensionDebugMode: true,
 };
 
-// Try to load from LEEDZ_CONFIG if available
-if (typeof LEEDZ_CONFIG !== 'undefined') {
-  platformConfig.apiUrl = LEEDZ_CONFIG.API_URL || platformConfig.apiUrl;
-  platformConfig.platformUrl = LEEDZ_CONFIG.WEB_URL || platformConfig.platformUrl;
-  console.log('[Postzzz] Config loaded from LEEDZ_CONFIG:', platformConfig);
-}
+let configLoaded = false;
 
-// Load config from config files (fallback)
+// Load config from config.js file
 async function loadConfig() {
-  // First check if LEEDZ_CONFIG is already loaded
-  if (typeof LEEDZ_CONFIG !== 'undefined') {
-    platformConfig.apiUrl = LEEDZ_CONFIG.API_URL || platformConfig.apiUrl;
-    platformConfig.platformUrl = LEEDZ_CONFIG.WEB_URL || platformConfig.platformUrl;
-    console.log('[Postzzz] Config from LEEDZ_CONFIG:', platformConfig);
-    return;
-  }
+  if (configLoaded) return;
   
-  const configFiles = ['config.js', 'config.production.js'];
-  
-  for (const configFile of configFiles) {
-    try {
-      const url = chrome.runtime.getURL(configFile);
-      const response = await fetch(url);
-      if (!response.ok) continue;
-      
-      const text = await response.text();
-      const apiUrlMatch = text.match(/API_URL:\s*['"]([^'"]+)['"]/);
-      const webUrlMatch = text.match(/WEB_URL:\s*['"]([^'"]+)['"]/);
-      
-      if (apiUrlMatch) platformConfig.apiUrl = apiUrlMatch[1];
-      if (webUrlMatch) platformConfig.platformUrl = webUrlMatch[1];
-      
-      console.log(`[Postzzz] Config loaded from ${configFile}:`, {
-        apiUrl: platformConfig.apiUrl,
-        platformUrl: platformConfig.platformUrl
-      });
+  try {
+    const url = chrome.runtime.getURL('config.js');
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.log('[Postzzz] config.js not found, using defaults');
       return;
-    } catch (error) {
-      console.log(`[Postzzz] Could not load ${configFile}:`, error.message);
     }
+    
+    const text = await response.text();
+    
+    // Parse API_URL and WEB_URL from config.js
+    const apiUrlMatch = text.match(/API_URL:\s*['"]([^'"]+)['"]/);
+    const webUrlMatch = text.match(/WEB_URL:\s*['"]([^'"]+)['"]/);
+    
+    if (apiUrlMatch) platformConfig.apiUrl = apiUrlMatch[1];
+    if (webUrlMatch) platformConfig.platformUrl = webUrlMatch[1];
+    
+    configLoaded = true;
+    console.log('[Postzzz] ✅ Config loaded:', {
+      apiUrl: platformConfig.apiUrl,
+      platformUrl: platformConfig.platformUrl
+    });
+  } catch (error) {
+    console.error('[Postzzz] ❌ Failed to load config:', error.message);
   }
-  
-  console.log('[Postzzz] Using default config:', platformConfig);
 }
 
 // Load config immediately
@@ -1139,7 +1127,12 @@ const SCHEDULER_CHECK_INTERVAL = 30000; // Check every 30 seconds
 async function startScheduler() {
   if (schedulerInterval) return;
   
-  console.log('[Postzzz] Starting job scheduler');
+  // Ensure config is loaded first
+  await loadConfig();
+  
+  console.log('[Postzzz] 🚀 Starting job scheduler');
+  console.log('[Postzzz] 📡 API URL:', platformConfig.apiUrl);
+  console.log('[Postzzz] 🌐 Platform URL:', platformConfig.platformUrl);
   
   // Ensure device is registered before starting scheduler
   await registerDeviceIfNeeded();
@@ -1303,16 +1296,18 @@ let processedJobIds = new Set();
 
 // ==================== Startup ====================
 chrome.runtime.onInstalled.addListener(async () => {
-  console.log('[Postzzz] Extension installed/updated');
+  console.log('[Postzzz] 📦 Extension installed/updated');
   await loadConfig();
+  console.log('[Postzzz] Config after install:', platformConfig);
 });
 
 chrome.runtime.onStartup.addListener(async () => {
-  console.log('[Postzzz] Extension started');
+  console.log('[Postzzz] 🔄 Extension started (onStartup)');
   await loadConfig();
   
   // Start scheduler if authenticated
   const authState = await getAuthState();
+  console.log('[Postzzz] Auth state on startup:', authState.isAuthenticated ? 'Authenticated' : 'Not authenticated');
   if (authState.isAuthenticated) {
     startScheduler();
   }
@@ -1320,11 +1315,20 @@ chrome.runtime.onStartup.addListener(async () => {
 
 // Start scheduler on load if authenticated
 (async () => {
+  console.log('[Postzzz] 🚀 Service worker initializing...');
   await loadConfig();
+  console.log('[Postzzz] Config loaded:', platformConfig);
+  
   const authState = await getAuthState();
+  console.log('[Postzzz] Auth state:', authState.isAuthenticated ? '✅ Authenticated' : '❌ Not authenticated');
+  
   if (authState.isAuthenticated) {
+    console.log('[Postzzz] User:', authState.user?.email);
     startScheduler();
+  } else {
+    console.log('[Postzzz] ⚠️ Not authenticated - scheduler will not start');
+    console.log('[Postzzz] Please login at:', platformConfig.platformUrl);
   }
 })();
 
-console.log('[Postzzz] Background service worker loaded');
+console.log('[Postzzz] 📋 Background service worker loaded');
