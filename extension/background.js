@@ -7,14 +7,29 @@
 
 // ==================== Configuration ====================
 let platformConfig = {
-  platformUrl: 'https://leedz.vercel.app',
-  apiUrl: 'https://leedz-api.onrender.com',
+  platformUrl: 'http://localhost:3000',
+  apiUrl: 'http://localhost:3001',
   extensionAutoLogin: true,
-  extensionDebugMode: false,
+  extensionDebugMode: true,
 };
 
-// Load config from config files
+// Try to load from LEEDZ_CONFIG if available
+if (typeof LEEDZ_CONFIG !== 'undefined') {
+  platformConfig.apiUrl = LEEDZ_CONFIG.API_URL || platformConfig.apiUrl;
+  platformConfig.platformUrl = LEEDZ_CONFIG.WEB_URL || platformConfig.platformUrl;
+  console.log('[Postzzz] Config loaded from LEEDZ_CONFIG:', platformConfig);
+}
+
+// Load config from config files (fallback)
 async function loadConfig() {
+  // First check if LEEDZ_CONFIG is already loaded
+  if (typeof LEEDZ_CONFIG !== 'undefined') {
+    platformConfig.apiUrl = LEEDZ_CONFIG.API_URL || platformConfig.apiUrl;
+    platformConfig.platformUrl = LEEDZ_CONFIG.WEB_URL || platformConfig.platformUrl;
+    console.log('[Postzzz] Config from LEEDZ_CONFIG:', platformConfig);
+    return;
+  }
+  
   const configFiles = ['config.js', 'config.production.js'];
   
   for (const configFile of configFiles) {
@@ -36,11 +51,11 @@ async function loadConfig() {
       });
       return;
     } catch (error) {
-      // Try next file
+      console.log(`[Postzzz] Could not load ${configFile}:`, error.message);
     }
   }
   
-  console.log('[Postzzz] Using default config');
+  console.log('[Postzzz] Using default config:', platformConfig);
 }
 
 // Load config immediately
