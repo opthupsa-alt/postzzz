@@ -119,7 +119,9 @@ function setupRunnerEventListeners() {
 async function loadClients() {
   try {
     const response = await sendRunnerMessage({ type: 'GET_CLIENTS' });
-    runnerUIState.clients = response.clients || [];
+    // Handle both direct array and wrapped response
+    const clients = response?.clients || response?.data || response || [];
+    runnerUIState.clients = Array.isArray(clients) ? clients : [];
     
     // Update dropdown
     if (runnerElements.clientSelect) {
@@ -144,7 +146,9 @@ async function loadClients() {
 async function loadClaimedJobs() {
   try {
     const response = await sendRunnerMessage({ type: 'GET_CLAIMED_JOBS' });
-    runnerUIState.claimedJobs = response.jobs || [];
+    // Handle both direct array and wrapped response
+    const jobs = response?.jobs || response?.data || response || [];
+    runnerUIState.claimedJobs = Array.isArray(jobs) ? jobs : [];
     updateJobsList();
   } catch (error) {
     console.error('[Runner UI] Failed to load jobs:', error);
@@ -261,7 +265,8 @@ function updateJobsList() {
     FACEBOOK: '📘',
   };
   
-  runnerElements.jobsList.innerHTML = jobs.map(job => `
+  const jobsArray = Array.isArray(jobs) ? jobs : [];
+  runnerElements.jobsList.innerHTML = jobsArray.map(job => `
     <div class="job-card" data-job-id="${job.id}">
       <div class="job-card-header">
         <span class="job-card-platform">${platformIcons[job.platform] || '📱'}</span>

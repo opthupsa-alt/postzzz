@@ -295,12 +295,16 @@ async function injectAndReadPlatformAuth(tabId) {
 
 async function connectWebSocket() {
   const authState = await getAuthState();
-  if (!authState.isAuthenticated) return;
+  if (!authState.isAuthenticated) {
+    console.log('[Postzzz] WebSocket: Not authenticated, skipping');
+    return;
+  }
 
   if (socket && socket.readyState === WebSocket.OPEN) {
     return;
   }
 
+  // WebSocket is optional - Extension works without it via polling
   const wsUrl = platformConfig.apiUrl.replace('http', 'ws') + '/ws';
   
   try {
@@ -331,21 +335,27 @@ async function connectWebSocket() {
     };
     
     socket.onclose = () => {
-      console.log('[Postzzz] WebSocket disconnected');
+      console.log('[Postzzz] WebSocket disconnected (will use polling instead)');
       stopHeartbeat();
       broadcastToSidePanel({ type: 'WS_DISCONNECTED' });
       
+      // Only retry a few times, then give up (polling will work)
       if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttempts++;
         setTimeout(connectWebSocket, RECONNECT_DELAY);
+      } else {
+        console.log('[Postzzz] WebSocket unavailable, using polling mode');
       }
     };
     
     socket.onerror = (error) => {
-      console.error('[Postzzz] WebSocket error:', error);
+      // Don't spam console with WS errors
+      if (reconnectAttempts === 0) {
+        console.log('[Postzzz] WebSocket not available, using polling mode');
+      }
     };
   } catch (error) {
-    console.error('[Postzzz] WebSocket connection failed:', error);
+    console.log('[Postzzz] WebSocket not supported, using polling mode');
   }
 }
 
