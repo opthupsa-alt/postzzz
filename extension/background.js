@@ -661,13 +661,41 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
     }
     
     if (platform === 'X') {
+      // Adaptive selectors for X platform (handles different screen sizes)
+      const X_SELECTORS = {
+        editor: [
+          '[data-testid="tweetTextarea_0"]',
+          '[data-testid="tweetTextarea_0_label"] + div [contenteditable="true"]',
+          '[role="textbox"][data-testid]',
+          '.public-DraftEditor-content',
+          '[contenteditable="true"][role="textbox"]',
+          'div[data-contents="true"]',
+          '[contenteditable="true"]',
+        ],
+        fileInput: [
+          'input[type="file"][data-testid="fileInput"]',
+          'input[type="file"][accept*="image"]',
+          'input[type="file"][accept*="video"]',
+          'input[type="file"][multiple]',
+          'input[type="file"]',
+        ],
+        postButton: [
+          '[data-testid="tweetButton"]',
+          '[data-testid="tweetButtonInline"]',
+          'button[data-testid*="tweet"]',
+          'div[role="button"][data-testid*="tweet"]',
+          '[aria-label*="Post"]',
+          '[aria-label*="Tweet"]',
+          '[aria-label*="نشر"]',
+        ],
+      };
+      
       // If we have media, upload it FIRST before filling text
       if (mediaBlobs.length > 0) {
         console.log('[Postzzz] Uploading media first...');
         
         for (const media of mediaBlobs) {
           try {
-            // Convert blob to base64 for transfer to content script
             const reader = new FileReader();
             const base64 = await new Promise((resolve, reject) => {
               reader.onload = () => resolve(reader.result);
@@ -679,7 +707,7 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
             
             await chrome.scripting.executeScript({
               target: { tabId },
-              func: (base64Data, mimeType) => {
+              func: (base64Data, mimeType, fileInputSelectors) => {
                 return new Promise((resolve) => {
                   // Convert base64 to blob
                   const byteString = atob(base64Data.split(',')[1]);
@@ -693,34 +721,36 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
                   
                   console.log('[Postzzz] Created file:', file.name, file.size, 'bytes');
                   
-                  // Find the file input - X uses a hidden input
-                  const fileInput = document.querySelector('input[type="file"][data-testid="fileInput"]') ||
-                                   document.querySelector('input[type="file"][accept*="image"]') ||
-                                   document.querySelector('input[type="file"]');
+                  // Try multiple selectors to find file input
+                  let fileInput = null;
+                  for (const selector of fileInputSelectors) {
+                    try {
+                      fileInput = document.querySelector(selector);
+                      if (fileInput) {
+                        console.log('[Postzzz] Found file input with:', selector);
+                        break;
+                      }
+                    } catch (e) {}
+                  }
                   
                   if (fileInput) {
-                    console.log('[Postzzz] Found file input, adding file...');
                     const dt = new DataTransfer();
                     dt.items.add(file);
                     fileInput.files = dt.files;
-                    
-                    // Dispatch events
                     fileInput.dispatchEvent(new Event('change', { bubbles: true }));
                     fileInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    
                     console.log('[Postzzz] ✅ Media file added successfully');
                     resolve(true);
                   } else {
-                    console.error('[Postzzz] ❌ File input not found');
+                    console.error('[Postzzz] ❌ File input not found with any selector');
                     resolve(false);
                   }
                 });
               },
-              args: [base64, media.mimeType],
+              args: [base64, media.mimeType, X_SELECTORS.fileInput],
             });
             
             // Wait for upload to process
-            console.log('[Postzzz] Waiting for media to upload...');
             await new Promise(resolve => setTimeout(resolve, 4000));
           } catch (e) {
             console.error('[Postzzz] Failed to inject media:', e);
@@ -728,33 +758,68 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
         }
       }
       
-      // Now fill the text content
+      // Now fill the text content using adaptive selectors
       console.log('[Postzzz] Filling text content...');
       await chrome.scripting.executeScript({
         target: { tabId },
-        func: (text) => {
+        func: (text, editorSelectors) => {
           return new Promise((resolve) => {
             let attempts = 0;
-            const maxAttempts = 20;
+            const maxAttempts = 30;
             
             const tryFill = () => {
               attempts++;
-              const editor = document.querySelector('[data-testid="tweetTextarea_0"]') ||
-                            document.querySelector('[data-testid="tweetTextarea_0_label"]')?.nextElementSibling ||
-                            document.querySelector('[role="textbox"][data-testid]') ||
-                            document.querySelector('.public-DraftEditor-content') ||
-                            document.querySelector('[contenteditable="true"]');
+              
+              // Try each selector
+              let editor = null;
+              for (const selector of editorSelectors) {
+                try {
+                  editor = document.querySelector(selector);
+                  if (editor) {
+                    const style = window.getComputedStyle(editor);
+                    if (style.display !== 'none' && style.visibility !== 'hidden') {
+                      console.log('[Postzzz] Found editor with:', selector);
+                      break;
+                    }
+                    editor = null;
+                  }
+                } catch (e) {}
+              }
               
               if (editor) {
                 editor.focus();
+                
+                // Try multiple methods to insert text
+                let inserted = false;
+                
+                // Method 1: execCommand
                 if (document.execCommand) {
-                  document.execCommand('insertText', false, text);
-                } else {
-                  editor.textContent = text;
-                  editor.dispatchEvent(new Event('input', { bubbles: true }));
+                  try {
+                    inserted = document.execCommand('insertText', false, text);
+                  } catch (e) {}
                 }
-                console.log('[Postzzz] ✅ Content filled successfully');
-                resolve(true);
+                
+                // Method 2: Direct input
+                if (!inserted) {
+                  try {
+                    editor.textContent = text;
+                    editor.dispatchEvent(new Event('input', { bubbles: true }));
+                    editor.dispatchEvent(new Event('change', { bubbles: true }));
+                    inserted = true;
+                  } catch (e) {}
+                }
+                
+                // Method 3: innerHTML for contenteditable
+                if (!inserted && editor.contentEditable === 'true') {
+                  try {
+                    editor.innerHTML = `<span>${text}</span>`;
+                    editor.dispatchEvent(new Event('input', { bubbles: true }));
+                    inserted = true;
+                  } catch (e) {}
+                }
+                
+                console.log('[Postzzz] ✅ Content filled:', inserted);
+                resolve(inserted);
                 return;
               }
               
@@ -769,24 +834,35 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
             tryFill();
           });
         },
-        args: [content],
+        args: [content, X_SELECTORS.editor],
       });
       
       // Wait for content to be filled
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Auto-click Post button
+      // Auto-click Post button using adaptive selectors
       if (autoPost) {
         console.log('[Postzzz] Waiting before clicking Post...');
         await new Promise(resolve => setTimeout(resolve, 2000));
         
         await chrome.scripting.executeScript({
           target: { tabId },
-          func: () => {
-            const postBtn = document.querySelector('[data-testid="tweetButton"]') ||
-                           document.querySelector('[data-testid="tweetButtonInline"]') ||
-                           document.querySelector('button[data-testid*="tweet"]') ||
-                           document.querySelector('div[role="button"][data-testid*="tweet"]');
+          func: (postButtonSelectors) => {
+            // Try each selector
+            let postBtn = null;
+            for (const selector of postButtonSelectors) {
+              try {
+                postBtn = document.querySelector(selector);
+                if (postBtn && !postBtn.disabled) {
+                  const style = window.getComputedStyle(postBtn);
+                  if (style.display !== 'none' && style.visibility !== 'hidden') {
+                    console.log('[Postzzz] Found post button with:', selector);
+                    break;
+                  }
+                }
+                postBtn = null;
+              } catch (e) {}
+            }
             
             if (postBtn && !postBtn.disabled) {
               console.log('[Postzzz] ✅ Clicking Post button...');
@@ -797,7 +873,7 @@ async function fillPlatformContent(platform, content, tabId, autoPost = true, me
               return false;
             }
           },
-          args: [],
+          args: [X_SELECTORS.postButton],
         });
       }
       return { success: true, hasMedia };
@@ -1117,12 +1193,78 @@ async function registerDeviceIfNeeded(forceReregister = false) {
 // ==================== Job Scheduler ====================
 let schedulerInterval = null;
 const SCHEDULER_CHECK_INTERVAL = 30000; // Check every 30 seconds
+let isProcessingJob = false; // Mutex to prevent concurrent job processing
+const PROCESSED_JOBS_STORAGE_KEY = 'postzzz_processed_jobs';
+
+// Load processed jobs from persistent storage
+async function loadProcessedJobs() {
+  try {
+    const data = await getStorageData([PROCESSED_JOBS_STORAGE_KEY]);
+    const stored = data[PROCESSED_JOBS_STORAGE_KEY];
+    if (stored && Array.isArray(stored)) {
+      // Only keep jobs from last 24 hours
+      const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+      const validJobs = stored.filter(j => j.timestamp > oneDayAgo);
+      processedJobIds = new Set(validJobs.map(j => j.id));
+      console.log(`[Postzzz] ✅ Loaded ${processedJobIds.size} processed jobs from storage`);
+    }
+  } catch (e) {
+    console.error('[Postzzz] Failed to load processed jobs:', e);
+  }
+}
+
+// Save processed job to persistent storage
+async function saveProcessedJob(jobId) {
+  try {
+    const data = await getStorageData([PROCESSED_JOBS_STORAGE_KEY]);
+    let stored = data[PROCESSED_JOBS_STORAGE_KEY] || [];
+    
+    // Check if already exists
+    if (stored.some(j => j.id === jobId)) {
+      console.log(`[Postzzz] Job ${jobId} already in storage`);
+      return;
+    }
+    
+    // Add new job with timestamp
+    stored.push({ id: jobId, timestamp: Date.now() });
+    
+    // Keep only last 100 jobs and remove old ones
+    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+    stored = stored.filter(j => j.timestamp > oneDayAgo).slice(-100);
+    
+    await setStorageData({ [PROCESSED_JOBS_STORAGE_KEY]: stored });
+    processedJobIds.add(jobId);
+    console.log(`[Postzzz] ✅ Saved processed job: ${jobId}`);
+  } catch (e) {
+    console.error('[Postzzz] Failed to save processed job:', e);
+  }
+}
+
+// Check if job was already processed
+async function isJobProcessed(jobId) {
+  // Check memory first
+  if (processedJobIds.has(jobId)) {
+    return true;
+  }
+  
+  // Double-check storage
+  try {
+    const data = await getStorageData([PROCESSED_JOBS_STORAGE_KEY]);
+    const stored = data[PROCESSED_JOBS_STORAGE_KEY] || [];
+    return stored.some(j => j.id === jobId);
+  } catch (e) {
+    return false;
+  }
+}
 
 async function startScheduler() {
   if (schedulerInterval) return;
   
   // Ensure config is loaded first
   await loadConfig();
+  
+  // Load processed jobs from persistent storage
+  await loadProcessedJobs();
   
   console.log('[Postzzz] 🚀 Starting job scheduler');
   console.log('[Postzzz] 📡 API URL:', platformConfig.apiUrl);
@@ -1149,6 +1291,12 @@ function stopScheduler() {
 }
 
 async function checkScheduledJobs() {
+  // Mutex check - prevent concurrent processing
+  if (isProcessingJob) {
+    console.log('[Postzzz] Scheduler: Already processing a job, skipping this check');
+    return;
+  }
+  
   try {
     const authState = await getAuthState();
     if (!authState.isAuthenticated) {
@@ -1160,11 +1308,8 @@ async function checkScheduledJobs() {
     
     // Get jobs that are due now (scheduledAt <= now)
     const now = new Date().toISOString();
-    console.log('[Postzzz] Scheduler: Current time:', now);
     
     const response = await apiRequest(`/publishing/jobs?status=QUEUED&to=${encodeURIComponent(now)}`);
-    console.log('[Postzzz] Scheduler: API response:', JSON.stringify(response).substring(0, 200));
-    
     const jobs = response?.data || response || [];
     
     if (!Array.isArray(jobs) || jobs.length === 0) {
@@ -1186,49 +1331,51 @@ async function checkScheduledJobs() {
     
     // Process jobs one by one
     for (const job of jobs) {
-      // Skip already processed jobs
-      if (processedJobIds.has(job.id)) {
-        console.log(`[Postzzz] Job ${job.id} already processed, skipping`);
+      // CRITICAL: Check if job was already processed (persistent check)
+      const alreadyProcessed = await isJobProcessed(job.id);
+      if (alreadyProcessed) {
+        console.log(`[Postzzz] ⏭️ Job ${job.id} already processed, skipping`);
         continue;
       }
-      
-      console.log(`[Postzzz] Processing job:`, job.id, job.platform, job.scheduledAt);
       
       // Check if job is due
       const scheduledAt = new Date(job.scheduledAt);
       const nowDate = new Date();
       
-      console.log(`[Postzzz] Job scheduled at: ${scheduledAt.toISOString()}, now: ${nowDate.toISOString()}`);
+      if (scheduledAt > nowDate) {
+        console.log(`[Postzzz] Job ${job.id} not yet due, skipping`);
+        continue;
+      }
       
-      if (scheduledAt <= nowDate) {
-        console.log(`[Postzzz] ✅ Job ${job.id} is due! Starting auto-publish for ${job.platform}`);
-        
+      console.log(`[Postzzz] ✅ Job ${job.id} is due! Platform: ${job.platform}`);
+      
+      // IMMEDIATELY mark as processed to prevent duplicates
+      await saveProcessedJob(job.id);
+      
+      // Set mutex
+      isProcessingJob = true;
+      
+      try {
         // Check if platform is logged in
-        const platformConfig = PLATFORMS[job.platform];
-        if (platformConfig) {
-          console.log(`[Postzzz] Checking login for ${job.platform} at ${platformConfig.urls[0]}`);
+        const platConfig = PLATFORMS[job.platform];
+        if (platConfig) {
           const cookie = await chrome.cookies.get({
-            url: platformConfig.urls[0],
-            name: platformConfig.authCookie,
+            url: platConfig.urls[0],
+            name: platConfig.authCookie,
           });
           
-          console.log(`[Postzzz] Cookie check result:`, cookie ? 'Found' : 'Not found');
-          
           if (!cookie || !cookie.value) {
-            console.log(`[Postzzz] ❌ Not logged in to ${job.platform}, reporting NEEDS_LOGIN`);
-            // Claim, start, then report NEEDS_LOGIN status
+            console.log(`[Postzzz] ❌ Not logged in to ${job.platform}`);
+            // Report NEEDS_LOGIN
             try {
-              // Claim the job
               await apiRequest('/publishing/jobs/claim', {
                 method: 'POST',
                 body: JSON.stringify({ deviceId, limit: 1 }),
               });
-              // Start the job
               await apiRequest(`/publishing/jobs/${job.id}/start`, {
                 method: 'POST',
                 body: JSON.stringify({ deviceId }),
               });
-              // Complete with NEEDS_LOGIN
               await apiRequest(`/publishing/jobs/${job.id}/complete`, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -1246,42 +1393,33 @@ async function checkScheduledJobs() {
         }
         
         // User is logged in, proceed with publishing
-        console.log(`[Postzzz] ✅ User is logged in to ${job.platform}, proceeding with publish`);
+        console.log(`[Postzzz] ✅ Logged in to ${job.platform}, starting publish...`);
         
         // Claim the job first
         try {
-          console.log('[Postzzz] Claiming job...');
           await apiRequest('/publishing/jobs/claim', {
             method: 'POST',
-            body: JSON.stringify({
-              deviceId,
-              limit: 1,
-            }),
+            body: JSON.stringify({ deviceId, limit: 1 }),
           });
-          console.log('[Postzzz] Job claimed successfully');
         } catch (e) {
-          console.log('[Postzzz] Could not claim job, may already be claimed:', e.message);
+          // May already be claimed, continue anyway
         }
         
         // Start the job
-        console.log('[Postzzz] Starting publishing job...');
         const result = await startPublishingJob(job.id);
-        console.log('[Postzzz] startPublishingJob result:', result);
-        
-        // Mark job as processed locally to prevent re-processing
-        if (!processedJobIds) {
-          processedJobIds = new Set();
-        }
-        processedJobIds.add(job.id);
+        console.log('[Postzzz] Publish result:', result);
         
         // Wait before processing next job
-        await new Promise(resolve => setTimeout(resolve, 10000));
-      } else {
-        console.log(`[Postzzz] Job ${job.id} not yet due, skipping`);
+        await new Promise(resolve => setTimeout(resolve, 15000));
+        
+      } finally {
+        // Release mutex
+        isProcessingJob = false;
       }
     }
   } catch (error) {
     console.error('[Postzzz] Scheduler error:', error);
+    isProcessingJob = false; // Ensure mutex is released on error
   }
 }
 

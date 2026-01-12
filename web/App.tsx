@@ -32,6 +32,7 @@ import CalendarPage from './pages/CalendarPage';
 import PostEditorPage from './pages/PostEditorPage';
 import PublishingPage from './pages/PublishingPage';
 import DevicesPage from './pages/DevicesPage';
+import WhatsAppSettingsPage from './pages/WhatsAppSettingsPage';
 
 const App = () => {
   return (
@@ -84,6 +85,7 @@ const App = () => {
                 <Route path="posts/:postId/edit" element={<PostEditorPage />} />
                 <Route path="publishing" element={<PublishingPage />} />
                 <Route path="devices" element={<DevicesPage />} />
+                <Route path="whatsapp-settings" element={<WhatsAppSettingsPage />} />
               </Routes>
             </AppShell>
           </UserRoute>

@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Settings, LogOut, Bell, Zap, ShieldAlert, Menu,
   Smartphone, ShieldCheck, Grid, Globe,
   Command, Search as SearchIcon, Activity, Puzzle,
-  Building2, Calendar, Send
+  Building2, Calendar, Send, MessageCircle
 } from 'lucide-react';
 import JobProgressWidget from './JobProgressWidget';
 import NotificationToast from './NotificationToast';
@@ -136,6 +136,7 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/posts" icon={Calendar} label="التقويم" active={location.pathname === '/app/posts' || location.pathname.startsWith('/app/posts/')} />
               <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/publishing" icon={Send} label="النشر" active={location.pathname === '/app/publishing'} />
               <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/devices" icon={Smartphone} label="الأجهزة" active={location.pathname === '/app/devices'} />
+              <SidebarLink onClick={() => setSidebarOpen(false)} to="/app/whatsapp-settings" icon={MessageCircle} label="إعدادات الواتساب" active={location.pathname === '/app/whatsapp-settings'} />
             </div>
             
             
