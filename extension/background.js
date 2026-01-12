@@ -285,18 +285,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case 'REGISTER_DEVICE':
           try {
-            const device = await apiRequest('/devices/register', {
+            const response = await apiRequest('/devices/register', {
               method: 'POST',
               body: JSON.stringify({
                 name: 'Chrome Extension',
                 userAgent: navigator.userAgent,
               }),
             });
+            // Handle {data: device} wrapper
+            const device = response?.data || response;
             if (device?.id) {
               await setStorageData({ [STORAGE_KEYS.DEVICE_ID]: device.id });
+              console.log('[Postzzz] Device registered:', device.id);
             }
             return { success: true, device };
           } catch (error) {
+            console.error('[Postzzz] Device registration failed:', error);
             return { success: false, error: error.message };
           }
 
@@ -335,29 +339,58 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // ==================== Publishing Functions ====================
 
-// Platform URL patterns for tab detection
-const PLATFORM_URL_PATTERNS = {
-  X: ['*://x.com/*', '*://twitter.com/*'],
-  LINKEDIN: ['*://www.linkedin.com/*', '*://linkedin.com/*'],
-  INSTAGRAM: ['*://www.instagram.com/*', '*://instagram.com/*'],
-  FACEBOOK: ['*://www.facebook.com/*', '*://facebook.com/*'],
-};
-
-const PLATFORM_URLS = {
-  X: 'https://x.com',
-  LINKEDIN: 'https://www.linkedin.com',
-  INSTAGRAM: 'https://www.instagram.com',
-  FACEBOOK: 'https://www.facebook.com',
+// Platform configurations
+const PLATFORMS = {
+  X: {
+    urls: ['https://x.com', 'https://twitter.com'],
+    patterns: ['*://x.com/*', '*://twitter.com/*'],
+    cookieDomain: '.x.com',
+    authCookie: 'auth_token',
+    composeUrl: 'https://x.com/compose/post',
+  },
+  LINKEDIN: {
+    urls: ['https://www.linkedin.com'],
+    patterns: ['*://www.linkedin.com/*', '*://linkedin.com/*'],
+    cookieDomain: '.linkedin.com',
+    authCookie: 'li_at',
+    composeUrl: 'https://www.linkedin.com/feed/',
+  },
+  INSTAGRAM: {
+    urls: ['https://www.instagram.com'],
+    patterns: ['*://www.instagram.com/*', '*://instagram.com/*'],
+    cookieDomain: '.instagram.com',
+    authCookie: 'sessionid',
+    composeUrl: 'https://www.instagram.com/',
+  },
+  FACEBOOK: {
+    urls: ['https://www.facebook.com'],
+    patterns: ['*://www.facebook.com/*', '*://facebook.com/*'],
+    cookieDomain: '.facebook.com',
+    authCookie: 'c_user',
+    composeUrl: 'https://www.facebook.com/',
+  },
 };
 
 async function checkAllPlatformLogins() {
   const status = {};
   
-  for (const [platform, patterns] of Object.entries(PLATFORM_URL_PATTERNS)) {
+  for (const [platform, config] of Object.entries(PLATFORMS)) {
     try {
-      // Try all URL patterns for this platform
+      // Method 1: Check cookies (most reliable)
+      const cookie = await chrome.cookies.get({
+        url: config.urls[0],
+        name: config.authCookie,
+      });
+      
+      if (cookie && cookie.value) {
+        status[platform] = 'LOGGED_IN';
+        console.log(`[Postzzz] ${platform}: LOGGED_IN (cookie found)`);
+        continue;
+      }
+      
+      // Method 2: Check if tab exists and try DOM detection
       let tabs = [];
-      for (const pattern of patterns) {
+      for (const pattern of config.patterns) {
         const found = await chrome.tabs.query({ url: pattern });
         if (found.length > 0) {
           tabs = found;
@@ -367,76 +400,32 @@ async function checkAllPlatformLogins() {
       
       if (tabs.length === 0) {
         status[platform] = 'NO_TAB';
-        console.log(`[Postzzz] No tab found for ${platform}`);
+        console.log(`[Postzzz] ${platform}: NO_TAB`);
         continue;
       }
       
-      console.log(`[Postzzz] Found tab for ${platform}:`, tabs[0].url);
+      // Try DOM detection as fallback
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id },
+          func: () => {
+            // Generic logged-in detection
+            const hasAvatar = document.querySelector('img[alt*="profile"], img[alt*="avatar"], [data-testid*="avatar"]');
+            const hasLogout = document.querySelector('[href*="logout"], [data-testid*="logout"], button[aria-label*="Account"]');
+            const hasLogin = document.querySelector('input[type="password"], [href*="login"], [data-testid="loginButton"]');
+            
+            if (hasAvatar || hasLogout) return 'LOGGED_IN';
+            if (hasLogin) return 'NEEDS_LOGIN';
+            return 'UNKNOWN';
+          },
+        });
+        
+        status[platform] = results[0]?.result || 'UNKNOWN';
+      } catch (scriptError) {
+        status[platform] = 'UNKNOWN';
+      }
       
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tabs[0].id },
-        func: (p) => {
-          const detectors = {
-            X: () => {
-              // Multiple selectors for X/Twitter login detection
-              const loggedInSelectors = [
-                '[data-testid="SideNav_AccountSwitcher_Button"]',
-                '[data-testid="AppTabBar_Profile_Link"]',
-                '[aria-label="Profile"]',
-                'a[href*="/compose/tweet"]',
-              ];
-              const loggedOutSelectors = [
-                '[data-testid="loginButton"]',
-                '[data-testid="signupButton"]',
-                'a[href="/login"]',
-              ];
-              
-              for (const sel of loggedInSelectors) {
-                if (document.querySelector(sel)) return 'LOGGED_IN';
-              }
-              for (const sel of loggedOutSelectors) {
-                if (document.querySelector(sel)) return 'NEEDS_LOGIN';
-              }
-              return 'UNKNOWN';
-            },
-            LINKEDIN: () => {
-              const loggedIn = document.querySelector('.global-nav__me-photo') ||
-                              document.querySelector('[data-control-name="nav.settings_view_profile"]') ||
-                              document.querySelector('.feed-identity-module');
-              const loggedOut = document.querySelector('[data-tracking-control-name*="sign-in"]') ||
-                               document.querySelector('.nav__button-secondary');
-              if (loggedIn) return 'LOGGED_IN';
-              if (loggedOut) return 'NEEDS_LOGIN';
-              return 'UNKNOWN';
-            },
-            INSTAGRAM: () => {
-              const loggedIn = document.querySelector('[data-testid="user-avatar"]') ||
-                              document.querySelector('svg[aria-label="New post"]') ||
-                              document.querySelector('a[href*="/direct/inbox"]');
-              const loggedOut = document.querySelector('input[name="username"]') ||
-                               document.querySelector('button[type="submit"]');
-              if (loggedIn) return 'LOGGED_IN';
-              if (loggedOut) return 'NEEDS_LOGIN';
-              return 'UNKNOWN';
-            },
-            FACEBOOK: () => {
-              const loggedIn = document.querySelector('[aria-label="Your profile"]') ||
-                              document.querySelector('[aria-label="Account"]') ||
-                              document.querySelector('[data-pagelet="ProfileTilesFeed"]');
-              const loggedOut = document.querySelector('#email') ||
-                               document.querySelector('input[name="email"]');
-              if (loggedIn) return 'LOGGED_IN';
-              if (loggedOut) return 'NEEDS_LOGIN';
-              return 'UNKNOWN';
-            },
-          };
-          return detectors[p] ? detectors[p]() : 'UNKNOWN';
-        },
-        args: [platform],
-      });
-      
-      status[platform] = results[0]?.result || 'UNKNOWN';
-      console.log(`[Postzzz] ${platform} login status:`, status[platform]);
+      console.log(`[Postzzz] ${platform}: ${status[platform]}`);
     } catch (error) {
       console.error(`[Postzzz] Error checking ${platform}:`, error);
       status[platform] = 'ERROR';
@@ -449,76 +438,164 @@ async function checkAllPlatformLogins() {
 let activePublishJob = null;
 let activePublishTab = null;
 
+// Wait for tab to fully load
+async function waitForTabComplete(tabId, timeout = 15000) {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now();
+    
+    const checkTab = async () => {
+      try {
+        const tab = await chrome.tabs.get(tabId);
+        if (tab.status === 'complete') {
+          resolve(tab);
+          return;
+        }
+        
+        if (Date.now() - startTime > timeout) {
+          resolve(tab); // Resolve anyway after timeout
+          return;
+        }
+        
+        setTimeout(checkTab, 300);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    
+    checkTab();
+  });
+}
+
 async function startPublishingJob(jobId) {
   try {
+    console.log('[Postzzz] Starting job:', jobId);
+    
     const response = await apiRequest(`/publishing/jobs/${jobId}`);
     const job = response?.data || response;
     if (!job) {
       return { success: false, error: 'Job not found' };
     }
     
+    console.log('[Postzzz] Job details:', job);
     activePublishJob = job;
     
-    const composeUrls = {
-      X: 'https://x.com/compose/post',
-      LINKEDIN: 'https://www.linkedin.com/feed/',
-      INSTAGRAM: 'https://www.instagram.com/',
-      FACEBOOK: 'https://www.facebook.com/',
-    };
+    const platformConfig = PLATFORMS[job.platform];
+    if (!platformConfig) {
+      return { success: false, error: 'Unsupported platform: ' + job.platform };
+    }
     
+    // Open compose page
     activePublishTab = await chrome.tabs.create({ 
-      url: composeUrls[job.platform] || PLATFORM_URLS[job.platform],
+      url: platformConfig.composeUrl,
       active: true 
     });
     
-    // Wait for tab to load
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    console.log('[Postzzz] Opened tab:', activePublishTab.id);
     
-    // Get content
+    // Wait for tab to load completely
+    await waitForTabComplete(activePublishTab.id);
+    
+    // Extra wait for dynamic content
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Get content to post
     const variant = job.post?.variants?.find(v => v.platform === job.platform);
-    const content = variant?.caption || job.post?.content || '';
+    const content = variant?.caption || job.post?.content || job.content || '';
     
-    // Fill content
-    if (job.platform === 'X') {
+    console.log('[Postzzz] Content to post:', content.substring(0, 50) + '...');
+    
+    // Fill content based on platform
+    const fillResult = await fillPlatformContent(job.platform, content, activePublishTab.id);
+    
+    if (!fillResult.success) {
+      console.error('[Postzzz] Failed to fill content:', fillResult.error);
+    }
+    
+    return { success: true, message: 'Content filled. Please review and click Post.' };
+  } catch (error) {
+    console.error('[Postzzz] Start job error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function fillPlatformContent(platform, content, tabId) {
+  try {
+    if (platform === 'X') {
       await chrome.scripting.executeScript({
-        target: { tabId: activePublishTab.id },
+        target: { tabId },
         func: (text) => {
-          const interval = setInterval(() => {
+          // Wait for composer to appear
+          let attempts = 0;
+          const maxAttempts = 20;
+          
+          const tryFill = () => {
+            attempts++;
             const editor = document.querySelector('[data-testid="tweetTextarea_0"]') ||
-                          document.querySelector('[role="textbox"]');
+                          document.querySelector('[data-testid="tweetTextarea_0_label"]')?.nextElementSibling ||
+                          document.querySelector('[role="textbox"][data-testid]') ||
+                          document.querySelector('.public-DraftEditor-content') ||
+                          document.querySelector('[contenteditable="true"]');
+            
             if (editor) {
-              clearInterval(interval);
               editor.focus();
-              document.execCommand('insertText', false, text);
+              // Try multiple methods to insert text
+              if (document.execCommand) {
+                document.execCommand('insertText', false, text);
+              } else {
+                editor.textContent = text;
+                editor.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+              console.log('[Postzzz] Content filled successfully');
+              return true;
             }
-          }, 500);
-          setTimeout(() => clearInterval(interval), 10000);
+            
+            if (attempts < maxAttempts) {
+              setTimeout(tryFill, 500);
+            } else {
+              console.error('[Postzzz] Could not find editor after', maxAttempts, 'attempts');
+            }
+            return false;
+          };
+          
+          tryFill();
         },
         args: [content],
       });
-    } else if (job.platform === 'LINKEDIN') {
+      return { success: true };
+    } else if (platform === 'LINKEDIN') {
       await chrome.scripting.executeScript({
-        target: { tabId: activePublishTab.id },
+        target: { tabId },
         func: (text) => {
-          const startPostBtn = document.querySelector('.share-box-feed-entry__trigger');
-          if (startPostBtn) startPostBtn.click();
+          // Click "Start a post" button
+          const startPostBtn = document.querySelector('.share-box-feed-entry__trigger') ||
+                              document.querySelector('[data-control-name="share.post_entry_point"]') ||
+                              document.querySelector('button[aria-label*="Start a post"]');
           
+          if (startPostBtn) {
+            startPostBtn.click();
+          }
+          
+          // Wait for modal and fill
           setTimeout(() => {
             const editor = document.querySelector('.ql-editor') ||
-                          document.querySelector('[role="textbox"]');
+                          document.querySelector('[role="textbox"][contenteditable="true"]') ||
+                          document.querySelector('[data-placeholder*="What do you want to talk about"]');
+            
             if (editor) {
               editor.focus();
               editor.innerHTML = `<p>${text}</p>`;
+              editor.dispatchEvent(new Event('input', { bubbles: true }));
+              console.log('[Postzzz] LinkedIn content filled');
             }
-          }, 1000);
+          }, 1500);
         },
         args: [content],
       });
+      return { success: true };
     }
     
-    return { success: true };
+    return { success: false, error: 'Platform not supported for auto-fill' };
   } catch (error) {
-    console.error('[Postzzz] Start job error:', error);
     return { success: false, error: error.message };
   }
 }
