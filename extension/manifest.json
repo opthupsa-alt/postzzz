@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Leedz - Lead Generation",
-  "version": "1.0.0",
-  "description": "Chrome extension for Leedz platform - Search and manage leads directly from your browser",
+  "name": "Postzzz - Social Publishing",
+  "version": "2.0.0",
+  "description": "Chrome extension for Postzzz platform - Publish to social media with proof screenshots",
   
   "externally_connectable": {
     "matches": [
@@ -22,8 +22,7 @@
     "activeTab",
     "scripting",
     "windows",
-    "alarms",
-    "cookies"
+    "alarms"
   ],
   
   "host_permissions": [
@@ -73,7 +72,12 @@
   
   "web_accessible_resources": [
     {
-      "resources": ["config.js", "config.production.js"],
+      "resources": [
+        "config.js", 
+        "config.production.js",
+        "runner/*.js",
+        "runner/playbooks/*.js"
+      ],
       "matches": ["<all_urls>"]
     }
   ]

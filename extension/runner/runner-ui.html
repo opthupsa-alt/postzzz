@@ -1,0 +1,259 @@
+<!-- Runner UI Section - يُضاف داخل sidepanel.html -->
+
+<!-- Runner Mode Toggle -->
+<div id="runnerModeSection" class="status-card" style="display: none;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <h3>🚀 وضع النشر</h3>
+    <div style="display: flex; gap: 4px; background: #f1f5f9; padding: 4px; border-radius: 8px;">
+      <button id="modeAssistBtn" class="mode-btn active" data-mode="ASSIST">مساعد</button>
+      <button id="modeAutoBtn" class="mode-btn" data-mode="AUTO" disabled title="قريباً">تلقائي</button>
+    </div>
+  </div>
+  
+  <!-- Device Status -->
+  <div id="deviceStatus" style="margin-bottom: 16px;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span id="deviceStatusDot" style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e;"></span>
+      <span id="deviceStatusText" style="font-size: 13px; color: #64748b;">الجهاز متصل</span>
+    </div>
+  </div>
+  
+  <!-- Client Binding -->
+  <div style="margin-bottom: 16px;">
+    <label style="font-size: 12px; font-weight: 600; color: #64748b; display: block; margin-bottom: 6px;">العميل المحدد</label>
+    <select id="clientSelect" style="width: 100%; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; background: white;">
+      <option value="">-- اختر عميل --</option>
+    </select>
+  </div>
+  
+  <!-- Platform Login Status -->
+  <div style="margin-bottom: 16px;">
+    <label style="font-size: 12px; font-weight: 600; color: #64748b; display: block; margin-bottom: 8px;">حالة تسجيل الدخول</label>
+    <div id="platformLoginStatus" style="display: flex; flex-wrap: wrap; gap: 6px;">
+      <span class="platform-status" data-platform="X">
+        <span class="platform-icon">𝕏</span>
+        <span class="platform-state unknown">غير معروف</span>
+      </span>
+      <span class="platform-status" data-platform="INSTAGRAM">
+        <span class="platform-icon">📷</span>
+        <span class="platform-state unknown">غير معروف</span>
+      </span>
+      <span class="platform-status" data-platform="LINKEDIN">
+        <span class="platform-icon">💼</span>
+        <span class="platform-state unknown">غير معروف</span>
+      </span>
+    </div>
+    <button id="checkLoginsBtn" style="margin-top: 8px; padding: 6px 12px; font-size: 12px; background: #f1f5f9; border: none; border-radius: 6px; cursor: pointer;">
+      🔄 فحص الحالة
+    </button>
+  </div>
+</div>
+
+<!-- Jobs Inbox -->
+<div id="jobsInboxSection" class="status-card" style="display: none;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <h3>📥 المهام الواردة</h3>
+    <span id="jobsCount" style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 700;">0</span>
+  </div>
+  
+  <div id="jobsList" style="max-height: 300px; overflow-y: auto;">
+    <div class="empty-jobs" style="text-align: center; padding: 20px; color: #94a3b8;">
+      <div style="font-size: 32px; margin-bottom: 8px;">📭</div>
+      <div>لا توجد مهام في الانتظار</div>
+    </div>
+  </div>
+</div>
+
+<!-- Active Job -->
+<div id="activePublishJobSection" class="status-card" style="display: none;">
+  <h3>🎯 المهمة الحالية</h3>
+  
+  <div id="activeJobDetails" style="margin-top: 12px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+      <span id="activeJobPlatform" style="font-size: 24px;">𝕏</span>
+      <div>
+        <div id="activeJobTitle" style="font-weight: 700; color: #1e293b;">منشور جديد</div>
+        <div id="activeJobClient" style="font-size: 12px; color: #64748b;">العميل</div>
+      </div>
+    </div>
+    
+    <!-- Content Preview -->
+    <div id="activeJobContent" style="background: #f8fafc; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 13px; max-height: 100px; overflow-y: auto;">
+      محتوى المنشور...
+    </div>
+    
+    <!-- Steps Progress -->
+    <div id="activeJobSteps" style="margin-bottom: 12px;">
+      <div class="step-item" data-step="check_login">
+        <span class="step-icon">⏳</span>
+        <span class="step-text">التحقق من تسجيل الدخول</span>
+      </div>
+      <div class="step-item" data-step="open_composer">
+        <span class="step-icon">⏳</span>
+        <span class="step-text">فتح نافذة النشر</span>
+      </div>
+      <div class="step-item" data-step="fill_content">
+        <span class="step-icon">⏳</span>
+        <span class="step-text">كتابة المحتوى</span>
+      </div>
+      <div class="step-item" data-step="wait_confirm">
+        <span class="step-icon">⏳</span>
+        <span class="step-text">انتظار التأكيد</span>
+      </div>
+    </div>
+    
+    <!-- Actions -->
+    <div id="activeJobActions" style="display: flex; gap: 8px;">
+      <button id="confirmPublishBtn" class="btn btn-primary" style="flex: 1; display: none;">
+        ✅ تأكيد النشر
+      </button>
+      <button id="cancelJobBtn" class="btn btn-secondary" style="flex: 1;">
+        ❌ إلغاء
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* Mode Toggle */
+  .mode-btn {
+    padding: 6px 12px;
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s;
+  }
+  
+  .mode-btn.active {
+    background: white;
+    color: #3b82f6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  
+  .mode-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  /* Platform Status */
+  .platform-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: #f1f5f9;
+    border-radius: 6px;
+    font-size: 11px;
+  }
+  
+  .platform-icon {
+    font-size: 14px;
+  }
+  
+  .platform-state {
+    font-weight: 600;
+  }
+  
+  .platform-state.logged-in {
+    color: #16a34a;
+  }
+  
+  .platform-state.needs-login {
+    color: #dc2626;
+  }
+  
+  .platform-state.unknown {
+    color: #94a3b8;
+  }
+  
+  /* Job Card */
+  .job-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .job-card:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+  }
+  
+  .job-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  
+  .job-card-platform {
+    font-size: 20px;
+  }
+  
+  .job-card-title {
+    font-weight: 600;
+    color: #1e293b;
+    font-size: 13px;
+  }
+  
+  .job-card-client {
+    font-size: 11px;
+    color: #64748b;
+  }
+  
+  .job-card-time {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-top: 4px;
+  }
+  
+  /* Step Item */
+  .step-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 12px;
+    color: #64748b;
+  }
+  
+  .step-item.active {
+    color: #3b82f6;
+    font-weight: 600;
+  }
+  
+  .step-item.done {
+    color: #16a34a;
+  }
+  
+  .step-item.error {
+    color: #dc2626;
+  }
+  
+  .step-icon {
+    font-size: 14px;
+  }
+  
+  /* Buttons */
+  .btn-secondary {
+    background: #f1f5f9;
+    color: #64748b;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .btn-secondary:hover {
+    background: #e2e8f0;
+  }
+</style>

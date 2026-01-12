@@ -26,6 +26,7 @@ import { ClientsModule } from './clients/clients.module';
 import { PostsModule } from './posts/posts.module';
 import { DevicesModule } from './devices/devices.module';
 import { PublishingModule } from './publishing/publishing.module';
+import { MediaModule } from './media/media.module';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { PublishingModule } from './publishing/publishing.module';
     PostsModule,
     DevicesModule,
     PublishingModule,
+    MediaModule,
   ],
 })
 export class AppModule {}
