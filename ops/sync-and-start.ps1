@@ -45,8 +45,9 @@ Get-Content $MasterEnvPath | ForEach-Object {
 # Extract values
 $ApiPort = $Config['API_PORT'] ?? '3001'
 $WebPort = $Config['WEB_PORT'] ?? '3000'
-$ApiUrl = "http://localhost:$ApiPort"
-$WebUrl = "http://localhost:$WebPort"
+$HostIP = $Config['HOST_IP'] ?? 'localhost'
+$ApiUrl = $Config['API_URL'] ?? "http://${HostIP}:$ApiPort"
+$WebUrl = $Config['WEB_URL'] ?? "http://${HostIP}:$WebPort"
 $DatabaseUrl = $Config['DATABASE_URL']
 $DatabaseUrlUnpooled = $Config['DATABASE_URL_UNPOOLED']
 $JwtSecret = $Config['JWT_SECRET']
@@ -60,6 +61,7 @@ $ExtMatchThreshold = $Config['EXTENSION_MATCH_THRESHOLD'] ?? '90'
 
 Write-Host ""
 Write-Host "📋 الإعدادات المقروءة:" -ForegroundColor Yellow
+Write-Host "   • Host IP:  $HostIP" -ForegroundColor Gray
 Write-Host "   • API Port: $ApiPort" -ForegroundColor Gray
 Write-Host "   • Web Port: $WebPort" -ForegroundColor Gray
 Write-Host "   • API URL:  $ApiUrl" -ForegroundColor Gray
