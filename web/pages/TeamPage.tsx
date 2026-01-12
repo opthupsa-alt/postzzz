@@ -102,8 +102,8 @@ const TeamPage: React.FC = () => {
     <Guard role="ADMIN">
       <div className="space-y-12 animate-in fade-in duration-500 pb-20">
         <PageHeader 
-          title="إدارة فريق المبيعات" 
-          subtitle="تحكم في الصلاحيات وراقب أداء المناديب في الوقت الفعلي لرفع كفاءة التحويل المبيعاتي"
+          title="إدارة الفريق" 
+          subtitle="إدارة أعضاء الفريق وصلاحياتهم"
           actions={
             <button 
               onClick={() => setShowInvite(true)}
@@ -114,29 +114,6 @@ const TeamPage: React.FC = () => {
           }
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {[
-            { label: 'أعضاء الفريق', val: team.length, icon: Users, color: 'text-blue-600 bg-blue-50' },
-            { label: 'إجمالي الصفقات', val: '154', icon: TrendingUp, color: 'text-green-600 bg-green-50' },
-            { label: 'رسائل واتساب', val: '8,402', icon: MessageSquare, color: 'text-orange-600 bg-orange-50' },
-            { label: 'معدل النشاط', val: '92%', icon: Zap, color: 'text-purple-600 bg-purple-50' }
-          ].map((stat, i) => (
-            <div key={i} className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all group cursor-default">
-              <div className="flex items-center justify-between mb-4">
-                 <div className={`p-4 rounded-2xl ${stat.color} group-hover:scale-110 transition-transform duration-500`}>
-                   <stat.icon size={24} />
-                 </div>
-                 <div className="h-10 w-24 bg-gray-50 rounded-xl overflow-hidden flex items-end px-1 gap-0.5">
-                    {[...Array(6)].map((_, j) => (
-                      <div key={j} className="flex-1 bg-blue-100 rounded-t-sm group-hover:bg-blue-600 transition-colors" style={{ height: `${Math.random() * 80 + 20}%` }}></div>
-                    ))}
-                 </div>
-              </div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{stat.label}</p>
-              <p className="text-3xl font-black text-gray-900 mt-1">{stat.val}</p>
-            </div>
-          ))}
-        </div>
 
         <div className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden min-h-[550px]">
           <div className="p-8 border-b border-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gray-50/20">
