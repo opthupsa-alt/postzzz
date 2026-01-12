@@ -9,36 +9,55 @@
  * - Device registration and heartbeat
  */
 
-// ==================== Load Config ====================
-// Try to load config.js first (local dev), then config.production.js
-let LEEDZ_CONFIG = null;
-try {
-  importScripts('config.js');
-  console.log('[Postzzz] Config loaded from config.js');
-} catch (e1) {
-  try {
-    importScripts('config.production.js');
-    console.log('[Postzzz] Config loaded from config.production.js');
-  } catch (e2) {
-    console.log('[Postzzz] No config file found, using defaults');
+// ==================== Configuration ====================
+// Default to production, will be overridden by loadConfig()
+let platformConfig = {
+  platformUrl: 'https://leedz.vercel.app',
+  apiUrl: 'https://leedz-api.onrender.com',
+  extensionAutoLogin: true,
+  extensionDebugMode: false,
+};
+
+// Load config from config files asynchronously
+async function loadConfig() {
+  const configFiles = ['config.js', 'config.production.js'];
+  
+  for (const configFile of configFiles) {
+    try {
+      const url = chrome.runtime.getURL(configFile);
+      const response = await fetch(url);
+      if (!response.ok) continue;
+      
+      const text = await response.text();
+      // Parse the config object from the file
+      const match = text.match(/LEEDZ_CONFIG\s*=\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}/s);
+      if (match) {
+        // Extract key-value pairs
+        const configText = match[0];
+        const apiUrlMatch = configText.match(/API_URL:\s*['"]([^'"]+)['"]/);
+        const webUrlMatch = configText.match(/WEB_URL:\s*['"]([^'"]+)['"]/);
+        const debugMatch = configText.match(/DEBUG_MODE:\s*(true|false)/);
+        
+        if (apiUrlMatch) platformConfig.apiUrl = apiUrlMatch[1];
+        if (webUrlMatch) platformConfig.platformUrl = webUrlMatch[1];
+        if (debugMatch) platformConfig.extensionDebugMode = debugMatch[1] === 'true';
+        
+        console.log(`[Postzzz] Config loaded from ${configFile}:`, {
+          apiUrl: platformConfig.apiUrl,
+          platformUrl: platformConfig.platformUrl
+        });
+        return; // Stop after first successful load
+      }
+    } catch (error) {
+      // File not found or error, try next
+    }
   }
+  
+  console.log('[Postzzz] Using default production config');
 }
 
-// ==================== Default Configuration ====================
-const DEFAULT_CONFIG = {
-  API_URL: LEEDZ_CONFIG?.API_URL || 'https://leedz-api.onrender.com',
-  WEB_URL: LEEDZ_CONFIG?.WEB_URL || 'https://leedz.vercel.app',
-  DEBUG_MODE: LEEDZ_CONFIG?.DEBUG_MODE || false,
-};
-
-let platformConfig = {
-  platformUrl: DEFAULT_CONFIG.WEB_URL,
-  apiUrl: DEFAULT_CONFIG.API_URL,
-  extensionAutoLogin: true,
-  extensionDebugMode: DEFAULT_CONFIG.DEBUG_MODE,
-};
-
-console.log('[Postzzz] Using config:', { apiUrl: platformConfig.apiUrl, platformUrl: platformConfig.platformUrl });
+// Load config immediately
+loadConfig();
 
 // ==================== Storage Keys ====================
 const STORAGE_KEYS = {
@@ -939,7 +958,6 @@ chrome.runtime.onStartup.addListener(async () => {
 
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('[Postzzz] Extension installed/updated');
-  await loadLocalConfig();
 });
 
 console.log('[Postzzz] Background service worker loaded');

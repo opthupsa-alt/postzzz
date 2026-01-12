@@ -119,7 +119,15 @@ async function updateConnectionStatus() {
 
 // ==================== Runner UI ====================
 
+let runnerUILoaded = false;
+
 async function loadRunnerUI() {
+  // Prevent duplicate loading
+  if (runnerUILoaded) {
+    console.log('[Postzzz] Runner UI already loaded');
+    return;
+  }
+  
   const runnerContainer = document.getElementById('runnerContainer');
   if (!runnerContainer) return;
   
@@ -129,6 +137,16 @@ async function loadRunnerUI() {
     const html = await response.text();
     runnerContainer.innerHTML = html;
     
+    // Check if script already exists
+    if (document.querySelector('script[src*="runner-ui.js"]')) {
+      console.log('[Postzzz] Runner UI script already exists');
+      if (window.PostzzzRunnerUI) {
+        window.PostzzzRunnerUI.init();
+      }
+      runnerUILoaded = true;
+      return;
+    }
+    
     // Load runner UI script
     const script = document.createElement('script');
     script.src = chrome.runtime.getURL('runner/runner-ui.js');
@@ -137,6 +155,7 @@ async function loadRunnerUI() {
       if (window.PostzzzRunnerUI) {
         window.PostzzzRunnerUI.init();
       }
+      runnerUILoaded = true;
     };
     document.body.appendChild(script);
   } catch (error) {
