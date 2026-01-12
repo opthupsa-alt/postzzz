@@ -1070,11 +1070,25 @@ async function sendHeartbeat() {
   }
 }
 
-async function registerDeviceIfNeeded() {
+async function registerDeviceIfNeeded(forceReregister = false) {
   try {
     const data = await getStorageData([STORAGE_KEYS.DEVICE_ID]);
-    if (data[STORAGE_KEYS.DEVICE_ID]) return;
+    const existingDeviceId = data[STORAGE_KEYS.DEVICE_ID];
     
+    // If we have a device ID and not forcing re-register, verify it exists
+    if (existingDeviceId && !forceReregister) {
+      try {
+        await apiRequest(`/devices/${existingDeviceId}`);
+        console.log('[Postzzz] Device verified:', existingDeviceId);
+        return existingDeviceId;
+      } catch (verifyError) {
+        console.log('[Postzzz] Device not found, will re-register');
+        await setStorageData({ [STORAGE_KEYS.DEVICE_ID]: null });
+      }
+    }
+    
+    // Register new device
+    console.log('[Postzzz] Registering new device...');
     const response = await apiRequest('/devices/register', {
       method: 'POST',
       body: JSON.stringify({
@@ -1093,10 +1107,12 @@ async function registerDeviceIfNeeded() {
     if (device?.id) {
       await setStorageData({ [STORAGE_KEYS.DEVICE_ID]: device.id });
       console.log('[Postzzz] Device registered:', device.id);
+      return device.id;
     }
   } catch (error) {
     console.error('[Postzzz] Device registration failed:', error);
   }
+  return null;
 }
 
 // ==================== Job Scheduler ====================
@@ -1107,6 +1123,10 @@ async function startScheduler() {
   if (schedulerInterval) return;
   
   console.log('[Postzzz] Starting job scheduler');
+  
+  // Ensure device is registered before starting scheduler
+  await registerDeviceIfNeeded();
+  
   schedulerInterval = setInterval(checkScheduledJobs, SCHEDULER_CHECK_INTERVAL);
   // Run immediately
   checkScheduledJobs();
