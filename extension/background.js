@@ -2,15 +2,10 @@
  * Postzzz Extension - Background Service Worker
  * Publishing-focused extension for social media automation
  * 
- * Features:
- * - Auto-login from platform
- * - WebSocket connection for real-time job dispatch
- * - Publishing job management
- * - Device registration and heartbeat
+ * SIMPLIFIED VERSION - No WebSocket, polling only
  */
 
 // ==================== Configuration ====================
-// Default to production, will be overridden by loadConfig()
 let platformConfig = {
   platformUrl: 'https://leedz.vercel.app',
   apiUrl: 'https://leedz-api.onrender.com',
@@ -18,7 +13,7 @@ let platformConfig = {
   extensionDebugMode: false,
 };
 
-// Load config from config files asynchronously
+// Load config from config files
 async function loadConfig() {
   const configFiles = ['config.js', 'config.production.js'];
   
@@ -29,78 +24,50 @@ async function loadConfig() {
       if (!response.ok) continue;
       
       const text = await response.text();
-      // Parse the config object from the file
-      const match = text.match(/LEEDZ_CONFIG\s*=\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}/s);
-      if (match) {
-        // Extract key-value pairs
-        const configText = match[0];
-        const apiUrlMatch = configText.match(/API_URL:\s*['"]([^'"]+)['"]/);
-        const webUrlMatch = configText.match(/WEB_URL:\s*['"]([^'"]+)['"]/);
-        const debugMatch = configText.match(/DEBUG_MODE:\s*(true|false)/);
-        
-        if (apiUrlMatch) platformConfig.apiUrl = apiUrlMatch[1];
-        if (webUrlMatch) platformConfig.platformUrl = webUrlMatch[1];
-        if (debugMatch) platformConfig.extensionDebugMode = debugMatch[1] === 'true';
-        
-        console.log(`[Postzzz] Config loaded from ${configFile}:`, {
-          apiUrl: platformConfig.apiUrl,
-          platformUrl: platformConfig.platformUrl
-        });
-        return; // Stop after first successful load
-      }
+      const apiUrlMatch = text.match(/API_URL:\s*['"]([^'"]+)['"]/);
+      const webUrlMatch = text.match(/WEB_URL:\s*['"]([^'"]+)['"]/);
+      
+      if (apiUrlMatch) platformConfig.apiUrl = apiUrlMatch[1];
+      if (webUrlMatch) platformConfig.platformUrl = webUrlMatch[1];
+      
+      console.log(`[Postzzz] Config loaded from ${configFile}:`, {
+        apiUrl: platformConfig.apiUrl,
+        platformUrl: platformConfig.platformUrl
+      });
+      return;
     } catch (error) {
-      // File not found or error, try next
+      // Try next file
     }
   }
   
-  console.log('[Postzzz] Using default production config');
+  console.log('[Postzzz] Using default config');
 }
 
 // Load config immediately
 loadConfig();
 
-// ==================== Storage Keys ====================
+// ==================== Storage ====================
 const STORAGE_KEYS = {
-  AUTH_TOKEN: 'leedz_auth_token',
-  USER: 'leedz_user',
-  TENANT: 'leedz_tenant',
-  PLATFORM_CONFIG: 'leedz_platform_config',
+  AUTH_TOKEN: 'postzzz_auth_token',
+  USER: 'postzzz_user',
+  TENANT: 'postzzz_tenant',
   DEVICE_ID: 'postzzz_device_id',
   SELECTED_CLIENT_ID: 'postzzz_selected_client_id',
-  RUNNER_MODE: 'postzzz_runner_mode',
 };
 
-// ==================== State ====================
-let socket = null;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 3;
-const RECONNECT_DELAY = 5000;
-let heartbeatInterval = null;
-let pollingInterval = null;
-let isPollingActive = false;
-
-// ==================== Storage Helpers ====================
-
 async function getStorageData(keys) {
-  return new Promise((resolve) => {
-    chrome.storage.local.get(keys, resolve);
-  });
+  return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
 }
 
 async function setStorageData(data) {
-  return new Promise((resolve) => {
-    chrome.storage.local.set(data, resolve);
-  });
+  return new Promise((resolve) => chrome.storage.local.set(data, resolve));
 }
 
 async function clearStorageData() {
-  return new Promise((resolve) => {
-    chrome.storage.local.clear(resolve);
-  });
+  return new Promise((resolve) => chrome.storage.local.clear(resolve));
 }
 
-// ==================== API Helpers ====================
-
+// ==================== API ====================
 async function apiRequest(endpoint, options = {}) {
   const { [STORAGE_KEYS.AUTH_TOKEN]: token } = await getStorageData([STORAGE_KEYS.AUTH_TOKEN]);
   
@@ -123,8 +90,7 @@ async function apiRequest(endpoint, options = {}) {
   return response.json();
 }
 
-// ==================== Auth Functions ====================
-
+// ==================== Auth ====================
 async function login(email, password) {
   const data = await apiRequest('/auth/login', {
     method: 'POST',
@@ -141,8 +107,6 @@ async function login(email, password) {
 }
 
 async function logout() {
-  disconnectWebSocket();
-  stopPolling();
   await clearStorageData();
 }
 
@@ -169,39 +133,61 @@ async function verifyToken() {
     await apiRequest('/auth/me');
     return true;
   } catch (error) {
-    console.log('[Postzzz] Token not valid');
+    console.log('[Postzzz] Token invalid, clearing');
     await logout();
     return false;
   }
 }
 
 // ==================== Auto-Login from Platform ====================
-
 async function checkPlatformLogin() {
-  if (!platformConfig.extensionAutoLogin) {
-    return { success: false, reason: 'disabled' };
-  }
-
   try {
+    // First check if already authenticated
     const authState = await getAuthState();
     if (authState.isAuthenticated) {
       const valid = await verifyToken();
       if (valid) {
-        return { success: true, alreadyLoggedIn: true };
+        return { success: true, user: authState.user };
       }
     }
 
+    // Try to get auth from platform tab
     const platformUrl = platformConfig.platformUrl;
-    let platformTab = await findPlatformTab(platformUrl);
+    const tabs = await chrome.tabs.query({});
+    const platformOrigin = new URL(platformUrl).origin;
+    
+    const platformTab = tabs.find(tab => {
+      try {
+        return tab.url && new URL(tab.url).origin === platformOrigin;
+      } catch {
+        return false;
+      }
+    });
     
     if (!platformTab) {
-      platformTab = await chrome.tabs.create({ url: platformUrl, active: false });
-      await waitForTabLoad(platformTab.id);
+      return { success: false, reason: 'no_platform_tab', platformUrl };
     }
 
-    const result = await injectAndReadPlatformAuth(platformTab.id);
+    // Read auth from platform localStorage
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: platformTab.id },
+      func: () => {
+        const token = localStorage.getItem('leedz_token') || localStorage.getItem('postzzz_token');
+        const user = localStorage.getItem('leedz_user') || localStorage.getItem('postzzz_user');
+        const tenant = localStorage.getItem('leedz_tenant') || localStorage.getItem('postzzz_tenant');
+        
+        return {
+          token,
+          user: user ? JSON.parse(user) : null,
+          tenant: tenant ? JSON.parse(tenant) : null,
+        };
+      },
+    });
+    
+    const result = results[0]?.result;
     
     if (result && result.token) {
+      // Verify the token
       const verifyResponse = await fetch(`${platformConfig.apiUrl}/auth/me`, {
         headers: { 'Authorization': `Bearer ${result.token}` }
       });
@@ -215,235 +201,18 @@ async function checkPlatformLogin() {
           [STORAGE_KEYS.TENANT]: userData.tenant || result.tenant,
         });
         
-        startPolling();
-        await connectWebSocket();
-        
         return { success: true, user: userData.user || userData };
       }
     }
     
     return { success: false, reason: 'not_logged_in', platformUrl };
   } catch (error) {
+    console.error('[Postzzz] Auto-login error:', error);
     return { success: false, reason: 'error', error: error.message };
   }
 }
 
-async function findPlatformTab(platformUrl) {
-  const tabs = await chrome.tabs.query({});
-  const platformOrigin = new URL(platformUrl).origin;
-  
-  return tabs.find(tab => {
-    try {
-      return tab.url && new URL(tab.url).origin === platformOrigin;
-    } catch {
-      return false;
-    }
-  });
-}
-
-async function waitForTabLoad(tabId, timeout = 10000) {
-  return new Promise((resolve, reject) => {
-    const startTime = Date.now();
-    
-    const checkTab = async () => {
-      try {
-        const tab = await chrome.tabs.get(tabId);
-        if (tab.status === 'complete') {
-          resolve(tab);
-          return;
-        }
-        
-        if (Date.now() - startTime > timeout) {
-          reject(new Error('Tab load timeout'));
-          return;
-        }
-        
-        setTimeout(checkTab, 200);
-      } catch (error) {
-        reject(error);
-      }
-    };
-    
-    checkTab();
-  });
-}
-
-async function injectAndReadPlatformAuth(tabId) {
-  try {
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => {
-        const token = localStorage.getItem('leedz_token') || localStorage.getItem('token');
-        const user = localStorage.getItem('leedz_user') || localStorage.getItem('user');
-        const tenant = localStorage.getItem('leedz_tenant') || localStorage.getItem('tenant');
-        
-        return {
-          token,
-          user: user ? JSON.parse(user) : null,
-          tenant: tenant ? JSON.parse(tenant) : null,
-        };
-      },
-    });
-    
-    return results[0]?.result;
-  } catch (error) {
-    return null;
-  }
-}
-
-// ==================== WebSocket ====================
-
-async function connectWebSocket() {
-  const authState = await getAuthState();
-  if (!authState.isAuthenticated) {
-    console.log('[Postzzz] WebSocket: Not authenticated, skipping');
-    return;
-  }
-
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    return;
-  }
-
-  // WebSocket is optional - Extension works without it via polling
-  const wsUrl = platformConfig.apiUrl.replace('http', 'ws') + '/ws';
-  
-  try {
-    socket = new WebSocket(wsUrl);
-    
-    socket.onopen = () => {
-      console.log('[Postzzz] WebSocket connected');
-      reconnectAttempts = 0;
-      
-      // Authenticate
-      socket.send(JSON.stringify({
-        type: 'AUTH',
-        token: authState.token,
-      }));
-      
-      // Start heartbeat
-      startHeartbeat();
-      broadcastToSidePanel({ type: 'WS_CONNECTED' });
-    };
-    
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        handleWebSocketMessage(data);
-      } catch (error) {
-        console.error('[Postzzz] WS message parse error:', error);
-      }
-    };
-    
-    socket.onclose = () => {
-      console.log('[Postzzz] WebSocket disconnected (will use polling instead)');
-      stopHeartbeat();
-      broadcastToSidePanel({ type: 'WS_DISCONNECTED' });
-      
-      // Only retry a few times, then give up (polling will work)
-      if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-        reconnectAttempts++;
-        setTimeout(connectWebSocket, RECONNECT_DELAY);
-      } else {
-        console.log('[Postzzz] WebSocket unavailable, using polling mode');
-      }
-    };
-    
-    socket.onerror = (error) => {
-      // Don't spam console with WS errors
-      if (reconnectAttempts === 0) {
-        console.log('[Postzzz] WebSocket not available, using polling mode');
-      }
-    };
-  } catch (error) {
-    console.log('[Postzzz] WebSocket not supported, using polling mode');
-  }
-}
-
-function disconnectWebSocket() {
-  stopHeartbeat();
-  if (socket) {
-    socket.close();
-    socket = null;
-  }
-}
-
-function startHeartbeat() {
-  stopHeartbeat();
-  heartbeatInterval = setInterval(() => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: 'PING' }));
-    }
-  }, 30000);
-}
-
-function stopHeartbeat() {
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval);
-    heartbeatInterval = null;
-  }
-}
-
-function handleWebSocketMessage(data) {
-  switch (data.type) {
-    case 'PONG':
-      break;
-      
-    case 'JOB_DISPATCH':
-      broadcastToSidePanel({ type: 'NEW_JOB', job: data.job });
-      break;
-      
-    case 'JOB_CANCEL':
-      broadcastToSidePanel({ type: 'JOB_CANCELLED', jobId: data.jobId });
-      break;
-      
-    default:
-      console.log('[Postzzz] Unknown WS message:', data.type);
-  }
-}
-
-// ==================== Polling ====================
-
-function startPolling() {
-  if (isPollingActive) return;
-  
-  isPollingActive = true;
-  pollingInterval = setInterval(pollPendingJobs, 5000);
-  pollPendingJobs(); // Initial poll
-}
-
-function stopPolling() {
-  isPollingActive = false;
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-    pollingInterval = null;
-  }
-}
-
-async function pollPendingJobs() {
-  try {
-    const authState = await getAuthState();
-    if (!authState.isAuthenticated) return;
-    
-    const jobs = await apiRequest('/publishing/jobs?status=QUEUED&limit=10');
-    
-    if (jobs && jobs.length > 0) {
-      broadcastToSidePanel({ type: 'PENDING_JOBS', jobs });
-    }
-  } catch (error) {
-    // Silently ignore polling errors
-  }
-}
-
-// ==================== Side Panel Communication ====================
-
-function broadcastToSidePanel(message) {
-  chrome.runtime.sendMessage(message).catch(() => {
-    // Side panel not open
-  });
-}
-
 // ==================== Message Handler ====================
-
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const handleMessage = async () => {
     try {
@@ -461,51 +230,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case 'VERIFY_TOKEN':
           return { valid: await verifyToken() };
 
-        case 'API_REQUEST':
-          return await apiRequest(message.endpoint, message.options);
-
-        case 'GET_CURRENT_TAB':
-          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-          return { tab };
-
-        case 'OPEN_SIDE_PANEL_REQUEST':
-          try {
-            const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (currentTab?.windowId) {
-              await chrome.sidePanel.open({ windowId: currentTab.windowId });
-              return { success: true };
-            }
-            return { success: false, error: 'No active window' };
-          } catch (error) {
-            return { success: false, error: error.message };
-          }
-
-        case 'SYNC_AUTH_FROM_PLATFORM':
-          if (message.token && message.user) {
-            await setStorageData({
-              [STORAGE_KEYS.AUTH_TOKEN]: message.token,
-              [STORAGE_KEYS.USER]: message.user,
-              [STORAGE_KEYS.TENANT]: message.tenant,
-            });
-            await connectWebSocket();
-            return { success: true };
-          }
-          return { success: false, error: 'Missing token or user' };
-
-        case 'CONNECT_WEBSOCKET':
-          await connectWebSocket();
-          return { success: true };
-
-        case 'DISCONNECT_WEBSOCKET':
-          disconnectWebSocket();
-          return { success: true };
-
-        case 'GET_WS_STATUS':
-          return { 
-            connected: socket && socket.readyState === WebSocket.OPEN,
-            reconnectAttempts,
-          };
-
         case 'CHECK_PLATFORM_LOGIN':
           return await checkPlatformLogin();
 
@@ -513,75 +237,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return platformConfig;
 
         case 'OPEN_PLATFORM':
-          const platformTab = await chrome.tabs.create({ url: platformConfig.platformUrl });
-          return { success: true, tabId: platformTab.id };
+          const tab = await chrome.tabs.create({ url: platformConfig.platformUrl });
+          return { success: true, tabId: tab.id };
 
-        // ==================== Publishing Runner Messages ====================
-        
-        case 'GET_DEVICE_ID':
-          const deviceData = await getStorageData([STORAGE_KEYS.DEVICE_ID]);
-          return { deviceId: deviceData[STORAGE_KEYS.DEVICE_ID] };
-
-        case 'SET_DEVICE_ID':
-          await setStorageData({ [STORAGE_KEYS.DEVICE_ID]: message.deviceId });
+        case 'CONNECT_WEBSOCKET':
+        case 'DISCONNECT_WEBSOCKET':
+          // WebSocket removed - using polling only
           return { success: true };
 
-        case 'GET_SELECTED_CLIENT':
-          const clientData = await getStorageData([STORAGE_KEYS.SELECTED_CLIENT_ID]);
-          return { clientId: clientData[STORAGE_KEYS.SELECTED_CLIENT_ID] };
-
-        case 'SET_SELECTED_CLIENT':
-          await setStorageData({ [STORAGE_KEYS.SELECTED_CLIENT_ID]: message.clientId });
-          return { success: true };
-
-        case 'GET_RUNNER_MODE':
-          const modeData = await getStorageData([STORAGE_KEYS.RUNNER_MODE]);
-          return { mode: modeData[STORAGE_KEYS.RUNNER_MODE] || 'ASSIST' };
-
-        case 'SET_RUNNER_MODE':
-          await setStorageData({ [STORAGE_KEYS.RUNNER_MODE]: message.mode });
-          return { success: true };
-
-        case 'CAPTURE_SCREENSHOT':
-          try {
-            const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
-            return { success: true, dataUrl };
-          } catch (error) {
-            return { success: false, error: error.message };
-          }
-
-        case 'EXECUTE_SCRIPT':
-          try {
-            const results = await chrome.scripting.executeScript({
-              target: { tabId: message.tabId },
-              func: new Function('return (' + message.func + ')()'),
-            });
-            return { success: true, result: results[0]?.result };
-          } catch (error) {
-            return { success: false, error: error.message };
-          }
+        case 'GET_WS_STATUS':
+          return { connected: false };
 
         // ==================== Runner UI Messages ====================
         
         case 'GET_CLIENTS':
           try {
-            const clients = await apiRequest('/clients');
+            const response = await apiRequest('/clients');
+            // Handle both {data: [...]} and direct array
+            const clients = response?.data || response || [];
             const selectedData = await getStorageData([STORAGE_KEYS.SELECTED_CLIENT_ID]);
             return { 
-              clients: clients || [], 
+              clients: Array.isArray(clients) ? clients : [], 
               selectedClientId: selectedData[STORAGE_KEYS.SELECTED_CLIENT_ID] 
             };
           } catch (error) {
+            console.error('[Postzzz] GET_CLIENTS error:', error);
             return { clients: [], error: error.message };
           }
 
         case 'GET_CLAIMED_JOBS':
           try {
-            const jobs = await apiRequest('/publishing/jobs?status=CLAIMED&limit=20');
-            return { jobs: jobs || [] };
+            const response = await apiRequest('/publishing/jobs?status=QUEUED&limit=20');
+            const jobs = response?.data || response || [];
+            return { jobs: Array.isArray(jobs) ? jobs : [] };
           } catch (error) {
+            console.error('[Postzzz] GET_CLAIMED_JOBS error:', error);
             return { jobs: [], error: error.message };
           }
+
+        case 'SET_SELECTED_CLIENT':
+          await setStorageData({ [STORAGE_KEYS.SELECTED_CLIENT_ID]: message.clientId });
+          return { success: true };
 
         case 'GET_DEVICE_STATUS':
           const devData = await getStorageData([STORAGE_KEYS.DEVICE_ID]);
@@ -589,13 +285,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case 'REGISTER_DEVICE':
           try {
-            const deviceInfo = {
-              name: 'Chrome Extension',
-              userAgent: navigator.userAgent,
-            };
             const device = await apiRequest('/devices/register', {
               method: 'POST',
-              body: JSON.stringify(deviceInfo),
+              body: JSON.stringify({
+                name: 'Chrome Extension',
+                userAgent: navigator.userAgent,
+              }),
             });
             if (device?.id) {
               await setStorageData({ [STORAGE_KEYS.DEVICE_ID]: device.id });
@@ -617,8 +312,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case 'CANCEL_JOB':
           return await cancelPublishingJob(message.jobId);
 
+        case 'CAPTURE_SCREENSHOT':
+          try {
+            const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+            return { success: true, dataUrl };
+          } catch (error) {
+            return { success: false, error: error.message };
+          }
+
         default:
-          return { error: 'Unknown message type' };
+          return { error: 'Unknown message type: ' + message.type };
       }
     } catch (error) {
       console.error('[Postzzz] Message handler error:', error);
@@ -632,7 +335,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // ==================== Publishing Functions ====================
 
-// Platform URLs
 const PLATFORM_URLS = {
   X: 'https://x.com',
   LINKEDIN: 'https://www.linkedin.com',
@@ -640,13 +342,48 @@ const PLATFORM_URLS = {
   FACEBOOK: 'https://www.facebook.com',
 };
 
-// Check login status for all platforms
 async function checkAllPlatformLogins() {
   const status = {};
   
   for (const [platform, url] of Object.entries(PLATFORM_URLS)) {
     try {
-      status[platform] = await checkPlatformLoginStatus(platform, url);
+      const tabs = await chrome.tabs.query({ url: `${url}/*` });
+      if (tabs.length === 0) {
+        status[platform] = 'UNKNOWN';
+        continue;
+      }
+      
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tabs[0].id },
+        func: (p) => {
+          const detectors = {
+            X: () => {
+              if (document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]')) return 'LOGGED_IN';
+              if (document.querySelector('[data-testid="loginButton"]')) return 'NEEDS_LOGIN';
+              return 'UNKNOWN';
+            },
+            LINKEDIN: () => {
+              if (document.querySelector('.global-nav__me-photo')) return 'LOGGED_IN';
+              if (document.querySelector('[data-tracking-control-name*="sign-in"]')) return 'NEEDS_LOGIN';
+              return 'UNKNOWN';
+            },
+            INSTAGRAM: () => {
+              if (document.querySelector('[data-testid="user-avatar"]')) return 'LOGGED_IN';
+              if (document.querySelector('input[name="username"]')) return 'NEEDS_LOGIN';
+              return 'UNKNOWN';
+            },
+            FACEBOOK: () => {
+              if (document.querySelector('[aria-label="Your profile"]')) return 'LOGGED_IN';
+              if (document.querySelector('#email')) return 'NEEDS_LOGIN';
+              return 'UNKNOWN';
+            },
+          };
+          return detectors[p] ? detectors[p]() : 'UNKNOWN';
+        },
+        args: [platform],
+      });
+      
+      status[platform] = results[0]?.result || 'UNKNOWN';
     } catch (error) {
       status[platform] = 'UNKNOWN';
     }
@@ -655,102 +392,19 @@ async function checkAllPlatformLogins() {
   return { status };
 }
 
-// Check login status for a specific platform
-async function checkPlatformLoginStatus(platform, url) {
-  try {
-    // Find existing tab or create one
-    const tabs = await chrome.tabs.query({ url: `${url}/*` });
-    let tab = tabs[0];
-    
-    if (!tab) {
-      // Create tab in background
-      tab = await chrome.tabs.create({ url, active: false });
-      await waitForTabLoad(tab.id, 15000);
-    }
-    
-    // Execute detection script
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: detectPlatformLogin,
-      args: [platform],
-    });
-    
-    return results[0]?.result || 'UNKNOWN';
-  } catch (error) {
-    console.error(`[Postzzz] Check ${platform} login error:`, error);
-    return 'UNKNOWN';
-  }
-}
-
-// Detection function to run in page context
-function detectPlatformLogin(platform) {
-  const detectors = {
-    X: () => {
-      // Check for logged-in indicators on X
-      const avatar = document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
-      const loginBtn = document.querySelector('[data-testid="loginButton"]');
-      if (avatar) return 'LOGGED_IN';
-      if (loginBtn) return 'NEEDS_LOGIN';
-      return 'UNKNOWN';
-    },
-    LINKEDIN: () => {
-      // Check for LinkedIn login
-      const navProfile = document.querySelector('.global-nav__me-photo');
-      const signInBtn = document.querySelector('[data-tracking-control-name="guest_homepage-basic_sign-in-button"]');
-      if (navProfile) return 'LOGGED_IN';
-      if (signInBtn) return 'NEEDS_LOGIN';
-      return 'UNKNOWN';
-    },
-    INSTAGRAM: () => {
-      const avatar = document.querySelector('[data-testid="user-avatar"]') || 
-                     document.querySelector('img[data-testid="user-avatar"]');
-      const loginForm = document.querySelector('input[name="username"]');
-      if (avatar) return 'LOGGED_IN';
-      if (loginForm) return 'NEEDS_LOGIN';
-      return 'UNKNOWN';
-    },
-    FACEBOOK: () => {
-      const profileLink = document.querySelector('[aria-label="Your profile"]');
-      const loginForm = document.querySelector('#email');
-      if (profileLink) return 'LOGGED_IN';
-      if (loginForm) return 'NEEDS_LOGIN';
-      return 'UNKNOWN';
-    },
-  };
-  
-  const detector = detectors[platform];
-  return detector ? detector() : 'UNKNOWN';
-}
-
-// Active job state
 let activePublishJob = null;
 let activePublishTab = null;
 
-// Start a publishing job
 async function startPublishingJob(jobId) {
   try {
-    // Get job details from API
-    const job = await apiRequest(`/publishing/jobs/${jobId}`);
+    const response = await apiRequest(`/publishing/jobs/${jobId}`);
+    const job = response?.data || response;
     if (!job) {
       return { success: false, error: 'Job not found' };
     }
     
     activePublishJob = job;
     
-    // Get platform URL
-    const platformUrl = PLATFORM_URLS[job.platform];
-    if (!platformUrl) {
-      return { success: false, error: 'Unsupported platform' };
-    }
-    
-    // Notify UI
-    broadcastToSidePanel({ 
-      type: 'JOB_STEP_COMPLETED', 
-      target: 'runner-ui',
-      completedSteps: ['check_login'] 
-    });
-    
-    // Open platform compose page
     const composeUrls = {
       X: 'https://x.com/compose/post',
       LINKEDIN: 'https://www.linkedin.com/feed/',
@@ -759,53 +413,22 @@ async function startPublishingJob(jobId) {
     };
     
     activePublishTab = await chrome.tabs.create({ 
-      url: composeUrls[job.platform] || platformUrl,
+      url: composeUrls[job.platform] || PLATFORM_URLS[job.platform],
       active: true 
     });
     
-    await waitForTabLoad(activePublishTab.id, 15000);
+    // Wait for tab to load
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
-    broadcastToSidePanel({ 
-      type: 'JOB_STEP_COMPLETED', 
-      target: 'runner-ui',
-      completedSteps: ['check_login', 'open_composer'] 
-    });
-    
-    // Get content to post
+    // Get content
     const variant = job.post?.variants?.find(v => v.platform === job.platform);
     const content = variant?.caption || job.post?.content || '';
     
-    // Fill content based on platform
-    await fillPlatformContent(job.platform, content, activePublishTab.id);
-    
-    broadcastToSidePanel({ 
-      type: 'JOB_STEP_COMPLETED', 
-      target: 'runner-ui',
-      completedSteps: ['check_login', 'open_composer', 'fill_content'] 
-    });
-    
-    // Wait for user confirmation (Assist Mode)
-    broadcastToSidePanel({ 
-      type: 'JOB_AWAITING_CONFIRM', 
-      target: 'runner-ui',
-      jobId 
-    });
-    
-    return { success: true };
-  } catch (error) {
-    console.error('[Postzzz] Start job error:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-// Fill content on platform
-async function fillPlatformContent(platform, content, tabId) {
-  const fillers = {
-    X: async () => {
+    // Fill content
+    if (job.platform === 'X') {
       await chrome.scripting.executeScript({
-        target: { tabId },
+        target: { tabId: activePublishTab.id },
         func: (text) => {
-          // Wait for composer and fill
           const interval = setInterval(() => {
             const editor = document.querySelector('[data-testid="tweetTextarea_0"]') ||
                           document.querySelector('[role="textbox"]');
@@ -819,12 +442,10 @@ async function fillPlatformContent(platform, content, tabId) {
         },
         args: [content],
       });
-    },
-    LINKEDIN: async () => {
+    } else if (job.platform === 'LINKEDIN') {
       await chrome.scripting.executeScript({
-        target: { tabId },
+        target: { tabId: activePublishTab.id },
         func: (text) => {
-          // Click "Start a post" button first
           const startPostBtn = document.querySelector('.share-box-feed-entry__trigger');
           if (startPostBtn) startPostBtn.click();
           
@@ -839,44 +460,32 @@ async function fillPlatformContent(platform, content, tabId) {
         },
         args: [content],
       });
-    },
-  };
-  
-  const filler = fillers[platform];
-  if (filler) {
-    await filler();
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('[Postzzz] Start job error:', error);
+    return { success: false, error: error.message };
   }
 }
 
-// Confirm and complete publishing
 async function confirmPublishJob(jobId) {
   if (!activePublishJob || activePublishJob.id !== jobId) {
     return { success: false, error: 'No active job' };
   }
   
   try {
-    // Capture screenshot as proof
     const screenshot = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
     
-    // Update job status
     await apiRequest(`/publishing/jobs/${jobId}/complete`, {
       method: 'POST',
       body: JSON.stringify({
-        status: 'COMPLETED',
+        status: 'SUCCEEDED',
         proofScreenshot: screenshot,
       }),
     });
     
-    // Notify UI
-    broadcastToSidePanel({ 
-      type: 'JOB_COMPLETED', 
-      target: 'runner-ui',
-      jobId,
-      success: true 
-    });
-    
     activePublishJob = null;
-    
     return { success: true };
   } catch (error) {
     console.error('[Postzzz] Confirm publish error:', error);
@@ -884,22 +493,16 @@ async function confirmPublishJob(jobId) {
   }
 }
 
-// Cancel a publishing job
 async function cancelPublishingJob(jobId) {
   try {
-    await apiRequest(`/publishing/jobs/${jobId}/cancel`, {
-      method: 'POST',
-    });
+    await apiRequest(`/publishing/jobs/${jobId}/cancel`, { method: 'POST' });
     
     if (activePublishTab) {
-      try {
-        await chrome.tabs.remove(activePublishTab.id);
-      } catch (e) {}
+      try { await chrome.tabs.remove(activePublishTab.id); } catch (e) {}
       activePublishTab = null;
     }
     
     activePublishJob = null;
-    
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
@@ -907,10 +510,8 @@ async function cancelPublishingJob(jobId) {
 }
 
 // ==================== External Message Handler ====================
-
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
   const handleExternalMessage = async () => {
-    // Only accept messages from our platform
     const platformOrigin = new URL(platformConfig.platformUrl).origin;
     if (sender.origin !== platformOrigin) {
       return { error: 'Unauthorized origin' };
@@ -924,8 +525,6 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
             [STORAGE_KEYS.USER]: message.user,
             [STORAGE_KEYS.TENANT]: message.tenant,
           });
-          await connectWebSocket();
-          startPolling();
           return { success: true };
         }
         return { success: false };
@@ -946,27 +545,10 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
   return true;
 });
 
-// ==================== Side Panel Setup ====================
-
+// ==================== Setup ====================
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
-// ==================== Startup ====================
-
-chrome.runtime.onStartup.addListener(async () => {
-  console.log('[Postzzz] Extension started');
-  await loadLocalConfig();
-  
-  const authState = await getAuthState();
-  if (authState.isAuthenticated) {
-    const valid = await verifyToken();
-    if (valid) {
-      startPolling();
-      await connectWebSocket();
-    }
-  }
-});
-
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(() => {
   console.log('[Postzzz] Extension installed/updated');
 });
 
