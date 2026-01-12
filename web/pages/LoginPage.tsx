@@ -44,12 +44,12 @@ const LoginPage: React.FC = () => {
           <div className="bg-white/20 backdrop-blur-md p-2 rounded-2xl border border-white/30 shadow-xl">
             <Zap size={32} fill="white" />
           </div>
-          <h1 className="text-3xl font-black tracking-tight">ليدززز</h1>
+          <h1 className="text-3xl font-black tracking-tight">بوستزز</h1>
         </div>
         
         <div className="relative z-10">
-          <h2 className="text-5xl font-black leading-tight mb-6">حوّل مجهودك إلى صفقات رابحة بذكاء</h2>
-          <p className="text-xl text-blue-100 max-w-lg font-medium leading-relaxed">المنصة الأولى في الشرق الأوسط التي تجمع بين دقة بيانات الخرائط وقوة التحليل الذكي وتكامل واتساب الرسمي.</p>
+          <h2 className="text-5xl font-black leading-tight mb-6">انشر على كل المنصات بضغطة واحدة</h2>
+          <p className="text-xl text-blue-100 max-w-lg font-medium leading-relaxed">منصة النشر الآلي على وسائل التواصل الاجتماعي مع إثبات النشر وجدولة المحتوى وإدارة العملاء.</p>
         </div>
 
         <div className="relative z-10 flex items-center gap-4 bg-white/10 backdrop-blur-md p-6 rounded-3xl border border-white/10 w-fit">
@@ -70,7 +70,7 @@ const LoginPage: React.FC = () => {
         <div className="w-full max-w-md space-y-10 animate-in fade-in slide-in-from-left-4 duration-700">
           <div>
             <h3 className="text-4xl font-black text-gray-900 tracking-tight">تسجيل الدخول</h3>
-            <p className="text-gray-500 mt-2 font-medium">مرحباً بك مجدداً في نظام مبيعاتك المفضل</p>
+            <p className="text-gray-500 mt-2 font-medium">مرحباً بك في منصة النشر الآلي</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-6">

@@ -38,9 +38,14 @@ async function loadLocalConfig() {
       if (!response.ok) continue;
       
       const text = await response.text();
-      const match = text.match(/const\s+LEEDZ_CONFIG\s*=\s*(\{[\s\S]*?\});/);
+      // Match multi-line config object - use greedy match to get full object
+      const match = text.match(/const\s+LEEDZ_CONFIG\s*=\s*(\{[\s\S]*\});/);
       if (match) {
-        const configObj = eval('(' + match[1] + ')');
+        // Extract just the object part and parse it
+        let configStr = match[1];
+        // Remove comments from the config string
+        configStr = configStr.replace(/\/\/.*$/gm, '');
+        const configObj = eval('(' + configStr + ')');
         if (configObj.API_URL) {
           platformConfig.apiUrl = configObj.API_URL;
           DEFAULT_CONFIG.API_URL = configObj.API_URL;
