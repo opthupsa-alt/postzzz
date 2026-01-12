@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -11,6 +12,8 @@ import { ClaimJobsDto, StartJobDto, CompleteJobDto } from './dto';
 
 @Injectable()
 export class PublishingService {
+  private readonly logger = new Logger(PublishingService.name);
+
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
@@ -44,6 +47,8 @@ export class PublishingService {
         where.scheduledAt.lte = new Date(options.to);
       }
     }
+
+    this.logger.log(`findJobs: tenantId=${tenantId}, options=${JSON.stringify(options)}, where=${JSON.stringify(where)}`);
 
     const jobs = await this.prisma.publishingJob.findMany({
       where,

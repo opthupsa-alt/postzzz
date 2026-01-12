@@ -49,10 +49,23 @@ const SettingsPage: React.FC = () => {
   const [whatsappPhone, setWhatsappPhone] = useState('');
   const [notifyOnPublish, setNotifyOnPublish] = useState(true);
 
-  // Fetch WhatsApp status on mount
+  // Fetch WhatsApp status and user profile on mount
   useEffect(() => {
     fetchWhatsAppStatus();
+    fetchUserProfile();
   }, []);
+
+  const fetchUserProfile = async () => {
+    try {
+      const response = await apiRequest('/users/profile') as { whatsappPhone?: string; notifyOnPublish?: boolean };
+      if (response) {
+        setWhatsappPhone(response.whatsappPhone || '');
+        setNotifyOnPublish(response.notifyOnPublish !== false);
+      }
+    } catch (error) {
+      console.error('Failed to fetch user profile:', error);
+    }
+  };
 
   const fetchWhatsAppStatus = async () => {
     try {
@@ -141,12 +154,22 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      await apiRequest('/users/profile', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          whatsappPhone: whatsappPhone || null,
+          notifyOnPublish: notifyOnPublish,
+        }),
+      });
       showToast('SUCCESS', 'تم الحفظ', 'تم تحديث إعدادات حسابك بنجاح.');
-    }, 1000);
+    } catch (error: any) {
+      showToast('ERROR', 'خطأ', error.message || 'فشل حفظ الإعدادات');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCreateKey = (e: React.FormEvent) => {
