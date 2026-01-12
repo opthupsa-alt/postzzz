@@ -529,6 +529,128 @@ async function waitForTabComplete(tabId, timeout = 15000) {
   });
 }
 
+/**
+ * Verify that the logged-in account matches the expected profile URL
+ */
+async function verifyAccountInTab(platform, tabId, expectedProfileUrl) {
+  try {
+    // Platform-specific username extraction patterns
+    const PROFILE_PATTERNS = {
+      X: /^https?:\/\/(www\.)?(x\.com|twitter\.com)\/([^\/\?]+)/,
+      INSTAGRAM: /^https?:\/\/(www\.)?instagram\.com\/([^\/\?]+)/,
+      FACEBOOK: /^https?:\/\/(www\.)?facebook\.com\/([^\/\?]+)/,
+      LINKEDIN: /^https?:\/\/(www\.)?linkedin\.com\/in\/([^\/\?]+)/,
+      TIKTOK: /^https?:\/\/(www\.)?tiktok\.com\/@([^\/\?]+)/,
+      YOUTUBE: /^https?:\/\/(www\.)?youtube\.com\/(@[^\/\?]+|channel\/[^\/\?]+)/,
+      THREADS: /^https?:\/\/(www\.)?threads\.net\/@([^\/\?]+)/,
+      SNAPCHAT: /^https?:\/\/(www\.)?(snapchat\.com\/add|my\.snapchat\.com)\/([^\/\?]+)/,
+    };
+    
+    // Extract expected username from URL
+    const pattern = PROFILE_PATTERNS[platform];
+    if (!pattern) {
+      return { verified: true, message: 'No pattern for platform' };
+    }
+    
+    const match = expectedProfileUrl.match(pattern);
+    if (!match) {
+      return { verified: false, error: 'Invalid profile URL format' };
+    }
+    
+    const expectedUsername = match[match.length - 1].replace('@', '').toLowerCase();
+    
+    // Execute script in tab to get current username
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (platform) => {
+        // Platform-specific selectors for finding current username
+        const selectors = {
+          X: [
+            'a[data-testid="AppTabBar_Profile_Link"]',
+            '[data-testid="SideNav_AccountSwitcher_Button"]',
+          ],
+          INSTAGRAM: [
+            'a[href^="/"][role="link"]',
+          ],
+          FACEBOOK: [
+            '[aria-label="Your profile"]',
+          ],
+          LINKEDIN: [
+            '.feed-identity-module a[href*="/in/"]',
+            'a[href*="/in/"]',
+          ],
+          TIKTOK: [
+            'a[href*="/@"]',
+          ],
+          YOUTUBE: [
+            'a[href*="/channel/"]',
+            'a[href*="/@"]',
+          ],
+          THREADS: [
+            'a[href*="/@"]',
+          ],
+          SNAPCHAT: [
+            'a[href*="/add/"]',
+          ],
+        };
+        
+        const platformSelectors = selectors[platform] || [];
+        
+        for (const selector of platformSelectors) {
+          try {
+            const element = document.querySelector(selector);
+            if (element && element.href) {
+              // Extract username from href
+              const patterns = {
+                X: /\/(x\.com|twitter\.com)\/([^\/\?]+)/,
+                INSTAGRAM: /instagram\.com\/([^\/\?]+)/,
+                FACEBOOK: /facebook\.com\/([^\/\?]+)/,
+                LINKEDIN: /\/in\/([^\/\?]+)/,
+                TIKTOK: /@([^\/\?]+)/,
+                YOUTUBE: /(@[^\/\?]+|channel\/[^\/\?]+)/,
+                THREADS: /@([^\/\?]+)/,
+                SNAPCHAT: /\/add\/([^\/\?]+)/,
+              };
+              
+              const pattern = patterns[platform];
+              if (pattern) {
+                const match = element.href.match(pattern);
+                if (match) {
+                  return match[match.length - 1].replace('@', '');
+                }
+              }
+            }
+          } catch (e) {}
+        }
+        
+        return null;
+      },
+      args: [platform],
+    });
+    
+    const currentUsername = result[0]?.result?.toLowerCase();
+    
+    if (!currentUsername) {
+      // Could not detect - allow to proceed but warn
+      console.warn('[Postzzz] Could not detect current username');
+      return { verified: true, warning: 'Could not verify account', currentUsername: null };
+    }
+    
+    const isMatch = expectedUsername === currentUsername;
+    
+    return {
+      verified: isMatch,
+      error: isMatch ? null : `الحساب المتصل (@${currentUsername}) مختلف عن الحساب المطلوب (@${expectedUsername})`,
+      expectedUsername,
+      currentUsername,
+    };
+  } catch (error) {
+    console.error('[Postzzz] Account verification error:', error);
+    // Allow to proceed on error
+    return { verified: true, warning: error.message };
+  }
+}
+
 async function startPublishingJob(jobId) {
   try {
     console.log('[Postzzz] Starting job:', jobId);
@@ -620,8 +742,37 @@ async function startPublishingJob(jobId) {
     const content = variant?.caption || job.post?.content || job.content || '';
     const mediaAssets = variant?.mediaAssets || [];
     
+    // Get profile URL for account verification
+    const clientPlatform = job.post?.client?.platforms?.find(p => p.platform === job.platform);
+    const expectedProfileUrl = clientPlatform?.profileUrl || null;
+    
     console.log('[Postzzz] Content to post:', content.substring(0, 50) + '...');
     console.log('[Postzzz] Media assets:', mediaAssets.length);
+    console.log('[Postzzz] Expected profile URL:', expectedProfileUrl);
+    
+    // Verify account if profile URL is available
+    if (expectedProfileUrl) {
+      const verifyResult = await verifyAccountInTab(job.platform, activePublishTab.id, expectedProfileUrl);
+      if (!verifyResult.verified) {
+        console.error('[Postzzz] Account verification failed:', verifyResult.error);
+        // Report as NEEDS_LOGIN or account mismatch
+        try {
+          await apiRequest(`/publishing/jobs/${jobId}/complete`, {
+            method: 'POST',
+            body: JSON.stringify({
+              deviceId,
+              status: 'FAILED',
+              errorCode: 'ACCOUNT_MISMATCH',
+              errorMessage: verifyResult.error || 'الحساب المتصل مختلف عن الحساب المطلوب',
+            }),
+          });
+        } catch (e) {
+          console.error('[Postzzz] Failed to report account mismatch:', e);
+        }
+        return { success: false, error: verifyResult.error };
+      }
+      console.log('[Postzzz] Account verified:', verifyResult.currentUsername);
+    }
     
     // Fill content based on platform
     const fillResult = await fillPlatformContent(job.platform, content, activePublishTab.id, true, mediaAssets);
