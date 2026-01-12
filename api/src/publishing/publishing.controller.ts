@@ -71,4 +71,13 @@ export class PublishingController {
     const result = await this.publishingService.cancelJob(user.tenantId, user.userId, id);
     return { data: result };
   }
+
+  @Post('jobs/cancel-all')
+  async cancelAllJobs(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('clientId') clientId?: string,
+  ) {
+    const result = await this.publishingService.cancelAllJobs(user.tenantId, user.userId, clientId);
+    return { data: result };
+  }
 }

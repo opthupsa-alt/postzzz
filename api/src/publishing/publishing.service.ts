@@ -406,6 +406,52 @@ export class PublishingService {
     return { success: true };
   }
 
+  async cancelAllJobs(tenantId: string, userId: string, clientId?: string) {
+    const where: any = {
+      tenantId,
+      status: { in: ['QUEUED', 'CLAIMED'] },
+    };
+
+    if (clientId) {
+      where.clientId = clientId;
+    }
+
+    // Get jobs to cancel
+    const jobsToCancel = await this.prisma.publishingJob.findMany({
+      where,
+      select: { id: true, postId: true, platform: true },
+    });
+
+    if (jobsToCancel.length === 0) {
+      return { cancelled: 0 };
+    }
+
+    // Cancel all jobs
+    await this.prisma.publishingJob.updateMany({
+      where,
+      data: {
+        status: 'CANCELLED',
+        lockedByDeviceId: null,
+        lockedAt: null,
+      },
+    });
+
+    // Log audit
+    await this.auditService.log({
+      tenantId,
+      userId,
+      action: 'JOBS_CANCEL_ALL',
+      entityType: 'PUBLISHING_JOB',
+      entityId: 'bulk',
+      metadata: { 
+        count: jobsToCancel.length,
+        clientId: clientId || 'all',
+      },
+    });
+
+    return { cancelled: jobsToCancel.length };
+  }
+
   // ==================== HELPER ====================
 
   private async updatePostStatusFromJobs(postId: string) {

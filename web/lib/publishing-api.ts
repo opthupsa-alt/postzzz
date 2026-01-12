@@ -94,6 +94,14 @@ export async function cancelJob(id: string): Promise<void> {
   });
 }
 
+export async function cancelAllJobs(clientId?: string): Promise<{ cancelled: number }> {
+  const params = clientId ? `?clientId=${clientId}` : '';
+  const response = await apiRequest<ApiResponse<{ cancelled: number }>>(`/publishing/jobs/cancel-all${params}`, {
+    method: 'POST',
+  });
+  return response.data;
+}
+
 // ==================== STATUS HELPERS ====================
 
 export const JOB_STATUS_CONFIG: Record<PublishingJobStatus, { label: string; color: string }> = {

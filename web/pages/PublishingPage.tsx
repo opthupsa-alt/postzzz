@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Clock, CheckCircle, XCircle, RefreshCw, Eye, AlertCircle, Ban, Lock } from 'lucide-react';
+import { Send, Clock, CheckCircle, XCircle, RefreshCw, Eye, AlertCircle, Ban, Lock, StopCircle, Edit2 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
-import { getPublishingJobs, cancelJob, PublishingJob, PublishingJobStatus, JOB_STATUS_CONFIG } from '../lib/publishing-api';
+import { getPublishingJobs, cancelJob, cancelAllJobs, PublishingJob, PublishingJobStatus, JOB_STATUS_CONFIG } from '../lib/publishing-api';
 import { getClients, Client, PLATFORM_CONFIG } from '../lib/clients-api';
+import { showToast } from '../components/NotificationToast';
 
 const STATUS_ICONS: Record<PublishingJobStatus, React.ElementType> = {
   QUEUED: Clock,
@@ -64,6 +65,30 @@ const PublishingPage: React.FC = () => {
     if (!confirm('هل أنت متأكد من إلغاء هذه المهمة؟')) return;
     try {
       await cancelJob(jobId);
+      showToast('SUCCESS', 'تم الإلغاء', 'تم إلغاء المهمة بنجاح');
+      await loadJobs();
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ');
+    }
+  };
+
+  const handleCancelAll = async () => {
+    const clientName = selectedClientId 
+      ? clients.find(c => c.id === selectedClientId)?.name 
+      : 'كل العملاء';
+    
+    const pendingCount = jobs.filter(j => ['QUEUED', 'CLAIMED'].includes(j.status)).length;
+    
+    if (pendingCount === 0) {
+      showToast('INFO', 'لا توجد مهام', 'لا توجد مهام في الانتظار لإلغائها');
+      return;
+    }
+    
+    if (!confirm(`هل أنت متأكد من إلغاء ${pendingCount} مهمة لـ ${clientName}؟\n\nهذا الإجراء لا يمكن التراجع عنه.`)) return;
+    
+    try {
+      const result = await cancelAllJobs(selectedClientId || undefined);
+      showToast('SUCCESS', 'تم الإلغاء', `تم إلغاء ${result.cancelled} مهمة بنجاح`);
       await loadJobs();
     } catch (err: any) {
       setError(err.message || 'حدث خطأ');
@@ -87,6 +112,24 @@ const PublishingPage: React.FC = () => {
       <PageHeader 
         title="النشر"
         subtitle="متابعة حالة نشر المحتوى"
+        actions={
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => navigate('/app/posts/new')}
+              className="bg-blue-600 text-white px-4 py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center gap-2"
+            >
+              <Send size={18} />
+              منشور جديد
+            </button>
+            <button 
+              onClick={handleCancelAll}
+              className="bg-red-50 text-red-600 px-4 py-3 rounded-xl font-bold hover:bg-red-100 transition-colors flex items-center gap-2 border border-red-200"
+            >
+              <StopCircle size={18} />
+              إيقاف الكل
+            </button>
+          </div>
+        }
       />
 
       {/* Stats */}
@@ -194,17 +237,28 @@ const PublishingPage: React.FC = () => {
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                          title="عرض المنشور"
                         >
                           <Eye size={18} className="text-gray-400" />
                         </a>
                       )}
                       {['QUEUED', 'CLAIMED'].includes(job.status) && (
-                        <button 
-                          onClick={() => handleCancel(job.id)}
-                          className="p-2 hover:bg-red-50 rounded-lg transition-colors text-gray-400 hover:text-red-500"
-                        >
-                          <Ban size={18} />
-                        </button>
+                        <>
+                          <button 
+                            onClick={() => navigate(`/app/posts/${job.postId}/edit`)}
+                            className="p-2 hover:bg-blue-50 rounded-lg transition-colors text-gray-400 hover:text-blue-500"
+                            title="تعديل المنشور"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                          <button 
+                            onClick={() => handleCancel(job.id)}
+                            className="p-2 hover:bg-red-50 rounded-lg transition-colors text-gray-400 hover:text-red-500"
+                            title="إلغاء المهمة"
+                          >
+                            <Ban size={18} />
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
