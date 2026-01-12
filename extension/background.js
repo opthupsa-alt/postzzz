@@ -328,6 +328,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return { success: false, error: error.message };
           }
 
+        case 'CHECK_SCHEDULED_JOBS':
+          // Manually trigger scheduler check
+          console.log('[Postzzz] Manual scheduler check triggered');
+          await checkScheduledJobs();
+          return { success: true };
+
+        case 'GET_SCHEDULER_STATUS':
+          return { 
+            running: schedulerInterval !== null,
+            heartbeatRunning: heartbeatInterval !== null,
+          };
+
+        case 'START_SCHEDULER':
+          startScheduler();
+          return { success: true };
+
+        case 'STOP_SCHEDULER':
+          stopScheduler();
+          return { success: true };
+
         default:
           return { error: 'Unknown message type: ' + message.type };
       }
