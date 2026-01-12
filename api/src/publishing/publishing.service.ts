@@ -94,7 +94,20 @@ export class PublishingService {
           },
         },
         client: {
-          select: { id: true, name: true, logoUrl: true },
+          select: { 
+            id: true, 
+            name: true, 
+            logoUrl: true,
+            platforms: {
+              select: {
+                id: true,
+                platform: true,
+                handle: true,
+                profileUrl: true,
+                isEnabled: true,
+              },
+            },
+          },
         },
         lockedByDevice: {
           select: { id: true, name: true },
