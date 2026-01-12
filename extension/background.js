@@ -9,11 +9,26 @@
  * - Device registration and heartbeat
  */
 
+// ==================== Load Config ====================
+// Try to load config.js first (local dev), then config.production.js
+let LEEDZ_CONFIG = null;
+try {
+  importScripts('config.js');
+  console.log('[Postzzz] Config loaded from config.js');
+} catch (e1) {
+  try {
+    importScripts('config.production.js');
+    console.log('[Postzzz] Config loaded from config.production.js');
+  } catch (e2) {
+    console.log('[Postzzz] No config file found, using defaults');
+  }
+}
+
 // ==================== Default Configuration ====================
 const DEFAULT_CONFIG = {
-  API_URL: 'https://leedz-api.onrender.com',
-  WEB_URL: 'https://leedz.vercel.app',
-  DEBUG_MODE: false,
+  API_URL: LEEDZ_CONFIG?.API_URL || 'https://leedz-api.onrender.com',
+  WEB_URL: LEEDZ_CONFIG?.WEB_URL || 'https://leedz.vercel.app',
+  DEBUG_MODE: LEEDZ_CONFIG?.DEBUG_MODE || false,
 };
 
 let platformConfig = {
@@ -23,57 +38,7 @@ let platformConfig = {
   extensionDebugMode: DEFAULT_CONFIG.DEBUG_MODE,
 };
 
-// Load config from config files
-// Priority: config.js (local dev) takes precedence over config.production.js
-async function loadLocalConfig() {
-  // Try config.js first (local development)
-  // If it exists and has valid config, use it and stop
-  // Otherwise fall back to config.production.js
-  const configFiles = ['config.js', 'config.production.js'];
-  
-  for (const configFile of configFiles) {
-    try {
-      const configUrl = chrome.runtime.getURL(configFile);
-      const response = await fetch(configUrl);
-      if (!response.ok) continue;
-      
-      const text = await response.text();
-      // Match multi-line config object - use greedy match to get full object
-      const match = text.match(/const\s+LEEDZ_CONFIG\s*=\s*(\{[\s\S]*\});/);
-      if (match) {
-        // Extract just the object part and parse it
-        let configStr = match[1];
-        // Remove comments from the config string
-        configStr = configStr.replace(/\/\/.*$/gm, '');
-        const configObj = eval('(' + configStr + ')');
-        if (configObj.API_URL) {
-          platformConfig.apiUrl = configObj.API_URL;
-          DEFAULT_CONFIG.API_URL = configObj.API_URL;
-        }
-        if (configObj.WEB_URL) {
-          platformConfig.platformUrl = configObj.WEB_URL;
-          DEFAULT_CONFIG.WEB_URL = configObj.WEB_URL;
-        }
-        if (configObj.DEBUG_MODE !== undefined) {
-          platformConfig.extensionDebugMode = configObj.DEBUG_MODE;
-          DEFAULT_CONFIG.DEBUG_MODE = configObj.DEBUG_MODE;
-        }
-        console.log(`[Postzzz] Config loaded from ${configFile}:`, { 
-          apiUrl: platformConfig.apiUrl, 
-          platformUrl: platformConfig.platformUrl 
-        });
-        // Stop after first successful config load
-        return;
-      }
-    } catch (error) {
-      // Silently ignore - file may not exist
-    }
-  }
-  
-  console.log('[Postzzz] Using default production config');
-}
-
-loadLocalConfig();
+console.log('[Postzzz] Using config:', { apiUrl: platformConfig.apiUrl, platformUrl: platformConfig.platformUrl });
 
 // ==================== Storage Keys ====================
 const STORAGE_KEYS = {
