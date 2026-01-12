@@ -105,3 +105,54 @@ export const JOB_STATUS_CONFIG: Record<PublishingJobStatus, { label: string; col
   NEEDS_LOGIN: { label: 'يحتاج تسجيل دخول', color: 'bg-yellow-50 text-yellow-600' },
   CANCELLED: { label: 'ملغي', color: 'bg-gray-50 text-gray-500' },
 };
+
+// ==================== DASHBOARD STATS ====================
+
+export interface PublishingStats {
+  totalPosts: number;
+  postsThisWeek: number;
+  completedJobs: number;
+  pendingJobs: number;
+  activeClients: number;
+  connectedDevices: number;
+  recentJobs: PublishingJob[];
+}
+
+export async function getPublishingStats(): Promise<PublishingStats> {
+  try {
+    // Get jobs for stats
+    const allJobs = await getPublishingJobs();
+    const completedJobs = allJobs.filter(j => j.status === 'SUCCEEDED').length;
+    const pendingJobs = allJobs.filter(j => ['QUEUED', 'CLAIMED'].includes(j.status)).length;
+    
+    // Get recent jobs
+    const recentJobs = allJobs.slice(0, 5);
+    
+    // Get unique clients
+    const uniqueClients = new Set(allJobs.map(j => j.clientId)).size;
+    
+    return {
+      totalPosts: allJobs.length,
+      postsThisWeek: allJobs.filter(j => {
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        return new Date(j.createdAt) > weekAgo;
+      }).length,
+      completedJobs,
+      pendingJobs,
+      activeClients: uniqueClients,
+      connectedDevices: 0, // Will be fetched from devices API
+      recentJobs,
+    };
+  } catch (error) {
+    return {
+      totalPosts: 0,
+      postsThisWeek: 0,
+      completedJobs: 0,
+      pendingJobs: 0,
+      activeClients: 0,
+      connectedDevices: 0,
+      recentJobs: [],
+    };
+  }
+}

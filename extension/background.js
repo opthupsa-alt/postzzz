@@ -562,6 +562,62 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return { success: false, error: error.message };
           }
 
+        // ==================== Runner UI Messages ====================
+        
+        case 'GET_CLIENTS':
+          try {
+            const clients = await apiRequest('/clients');
+            const selectedData = await getStorageData([STORAGE_KEYS.SELECTED_CLIENT_ID]);
+            return { 
+              clients: clients || [], 
+              selectedClientId: selectedData[STORAGE_KEYS.SELECTED_CLIENT_ID] 
+            };
+          } catch (error) {
+            return { clients: [], error: error.message };
+          }
+
+        case 'GET_CLAIMED_JOBS':
+          try {
+            const jobs = await apiRequest('/publishing/jobs?status=CLAIMED&limit=20');
+            return { jobs: jobs || [] };
+          } catch (error) {
+            return { jobs: [], error: error.message };
+          }
+
+        case 'GET_DEVICE_STATUS':
+          const devData = await getStorageData([STORAGE_KEYS.DEVICE_ID]);
+          return { deviceId: devData[STORAGE_KEYS.DEVICE_ID] };
+
+        case 'REGISTER_DEVICE':
+          try {
+            const deviceInfo = {
+              name: 'Chrome Extension',
+              userAgent: navigator.userAgent,
+            };
+            const device = await apiRequest('/devices/register', {
+              method: 'POST',
+              body: JSON.stringify(deviceInfo),
+            });
+            if (device?.id) {
+              await setStorageData({ [STORAGE_KEYS.DEVICE_ID]: device.id });
+            }
+            return { success: true, device };
+          } catch (error) {
+            return { success: false, error: error.message };
+          }
+
+        case 'CHECK_PLATFORM_LOGINS':
+          return await checkAllPlatformLogins();
+
+        case 'START_JOB':
+          return await startPublishingJob(message.jobId);
+
+        case 'CONFIRM_PUBLISH':
+          return await confirmPublishJob(message.jobId);
+
+        case 'CANCEL_JOB':
+          return await cancelPublishingJob(message.jobId);
+
         default:
           return { error: 'Unknown message type' };
       }
@@ -574,6 +630,282 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handleMessage().then(sendResponse);
   return true;
 });
+
+// ==================== Publishing Functions ====================
+
+// Platform URLs
+const PLATFORM_URLS = {
+  X: 'https://x.com',
+  LINKEDIN: 'https://www.linkedin.com',
+  INSTAGRAM: 'https://www.instagram.com',
+  FACEBOOK: 'https://www.facebook.com',
+};
+
+// Check login status for all platforms
+async function checkAllPlatformLogins() {
+  const status = {};
+  
+  for (const [platform, url] of Object.entries(PLATFORM_URLS)) {
+    try {
+      status[platform] = await checkPlatformLoginStatus(platform, url);
+    } catch (error) {
+      status[platform] = 'UNKNOWN';
+    }
+  }
+  
+  return { status };
+}
+
+// Check login status for a specific platform
+async function checkPlatformLoginStatus(platform, url) {
+  try {
+    // Find existing tab or create one
+    const tabs = await chrome.tabs.query({ url: `${url}/*` });
+    let tab = tabs[0];
+    
+    if (!tab) {
+      // Create tab in background
+      tab = await chrome.tabs.create({ url, active: false });
+      await waitForTabLoad(tab.id, 15000);
+    }
+    
+    // Execute detection script
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: detectPlatformLogin,
+      args: [platform],
+    });
+    
+    return results[0]?.result || 'UNKNOWN';
+  } catch (error) {
+    console.error(`[Postzzz] Check ${platform} login error:`, error);
+    return 'UNKNOWN';
+  }
+}
+
+// Detection function to run in page context
+function detectPlatformLogin(platform) {
+  const detectors = {
+    X: () => {
+      // Check for logged-in indicators on X
+      const avatar = document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
+      const loginBtn = document.querySelector('[data-testid="loginButton"]');
+      if (avatar) return 'LOGGED_IN';
+      if (loginBtn) return 'NEEDS_LOGIN';
+      return 'UNKNOWN';
+    },
+    LINKEDIN: () => {
+      // Check for LinkedIn login
+      const navProfile = document.querySelector('.global-nav__me-photo');
+      const signInBtn = document.querySelector('[data-tracking-control-name="guest_homepage-basic_sign-in-button"]');
+      if (navProfile) return 'LOGGED_IN';
+      if (signInBtn) return 'NEEDS_LOGIN';
+      return 'UNKNOWN';
+    },
+    INSTAGRAM: () => {
+      const avatar = document.querySelector('[data-testid="user-avatar"]') || 
+                     document.querySelector('img[data-testid="user-avatar"]');
+      const loginForm = document.querySelector('input[name="username"]');
+      if (avatar) return 'LOGGED_IN';
+      if (loginForm) return 'NEEDS_LOGIN';
+      return 'UNKNOWN';
+    },
+    FACEBOOK: () => {
+      const profileLink = document.querySelector('[aria-label="Your profile"]');
+      const loginForm = document.querySelector('#email');
+      if (profileLink) return 'LOGGED_IN';
+      if (loginForm) return 'NEEDS_LOGIN';
+      return 'UNKNOWN';
+    },
+  };
+  
+  const detector = detectors[platform];
+  return detector ? detector() : 'UNKNOWN';
+}
+
+// Active job state
+let activePublishJob = null;
+let activePublishTab = null;
+
+// Start a publishing job
+async function startPublishingJob(jobId) {
+  try {
+    // Get job details from API
+    const job = await apiRequest(`/publishing/jobs/${jobId}`);
+    if (!job) {
+      return { success: false, error: 'Job not found' };
+    }
+    
+    activePublishJob = job;
+    
+    // Get platform URL
+    const platformUrl = PLATFORM_URLS[job.platform];
+    if (!platformUrl) {
+      return { success: false, error: 'Unsupported platform' };
+    }
+    
+    // Notify UI
+    broadcastToSidePanel({ 
+      type: 'JOB_STEP_COMPLETED', 
+      target: 'runner-ui',
+      completedSteps: ['check_login'] 
+    });
+    
+    // Open platform compose page
+    const composeUrls = {
+      X: 'https://x.com/compose/post',
+      LINKEDIN: 'https://www.linkedin.com/feed/',
+      INSTAGRAM: 'https://www.instagram.com/',
+      FACEBOOK: 'https://www.facebook.com/',
+    };
+    
+    activePublishTab = await chrome.tabs.create({ 
+      url: composeUrls[job.platform] || platformUrl,
+      active: true 
+    });
+    
+    await waitForTabLoad(activePublishTab.id, 15000);
+    
+    broadcastToSidePanel({ 
+      type: 'JOB_STEP_COMPLETED', 
+      target: 'runner-ui',
+      completedSteps: ['check_login', 'open_composer'] 
+    });
+    
+    // Get content to post
+    const variant = job.post?.variants?.find(v => v.platform === job.platform);
+    const content = variant?.caption || job.post?.content || '';
+    
+    // Fill content based on platform
+    await fillPlatformContent(job.platform, content, activePublishTab.id);
+    
+    broadcastToSidePanel({ 
+      type: 'JOB_STEP_COMPLETED', 
+      target: 'runner-ui',
+      completedSteps: ['check_login', 'open_composer', 'fill_content'] 
+    });
+    
+    // Wait for user confirmation (Assist Mode)
+    broadcastToSidePanel({ 
+      type: 'JOB_AWAITING_CONFIRM', 
+      target: 'runner-ui',
+      jobId 
+    });
+    
+    return { success: true };
+  } catch (error) {
+    console.error('[Postzzz] Start job error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Fill content on platform
+async function fillPlatformContent(platform, content, tabId) {
+  const fillers = {
+    X: async () => {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (text) => {
+          // Wait for composer and fill
+          const interval = setInterval(() => {
+            const editor = document.querySelector('[data-testid="tweetTextarea_0"]') ||
+                          document.querySelector('[role="textbox"]');
+            if (editor) {
+              clearInterval(interval);
+              editor.focus();
+              document.execCommand('insertText', false, text);
+            }
+          }, 500);
+          setTimeout(() => clearInterval(interval), 10000);
+        },
+        args: [content],
+      });
+    },
+    LINKEDIN: async () => {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (text) => {
+          // Click "Start a post" button first
+          const startPostBtn = document.querySelector('.share-box-feed-entry__trigger');
+          if (startPostBtn) startPostBtn.click();
+          
+          setTimeout(() => {
+            const editor = document.querySelector('.ql-editor') ||
+                          document.querySelector('[role="textbox"]');
+            if (editor) {
+              editor.focus();
+              editor.innerHTML = `<p>${text}</p>`;
+            }
+          }, 1000);
+        },
+        args: [content],
+      });
+    },
+  };
+  
+  const filler = fillers[platform];
+  if (filler) {
+    await filler();
+  }
+}
+
+// Confirm and complete publishing
+async function confirmPublishJob(jobId) {
+  if (!activePublishJob || activePublishJob.id !== jobId) {
+    return { success: false, error: 'No active job' };
+  }
+  
+  try {
+    // Capture screenshot as proof
+    const screenshot = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+    
+    // Update job status
+    await apiRequest(`/publishing/jobs/${jobId}/complete`, {
+      method: 'POST',
+      body: JSON.stringify({
+        status: 'COMPLETED',
+        proofScreenshot: screenshot,
+      }),
+    });
+    
+    // Notify UI
+    broadcastToSidePanel({ 
+      type: 'JOB_COMPLETED', 
+      target: 'runner-ui',
+      jobId,
+      success: true 
+    });
+    
+    activePublishJob = null;
+    
+    return { success: true };
+  } catch (error) {
+    console.error('[Postzzz] Confirm publish error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Cancel a publishing job
+async function cancelPublishingJob(jobId) {
+  try {
+    await apiRequest(`/publishing/jobs/${jobId}/cancel`, {
+      method: 'POST',
+    });
+    
+    if (activePublishTab) {
+      try {
+        await chrome.tabs.remove(activePublishTab.id);
+      } catch (e) {}
+      activePublishTab = null;
+    }
+    
+    activePublishJob = null;
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
 
 // ==================== External Message Handler ====================
 
