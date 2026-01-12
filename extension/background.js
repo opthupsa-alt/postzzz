@@ -335,6 +335,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // ==================== Publishing Functions ====================
 
+// Platform URL patterns for tab detection
+const PLATFORM_URL_PATTERNS = {
+  X: ['*://x.com/*', '*://twitter.com/*'],
+  LINKEDIN: ['*://www.linkedin.com/*', '*://linkedin.com/*'],
+  INSTAGRAM: ['*://www.instagram.com/*', '*://instagram.com/*'],
+  FACEBOOK: ['*://www.facebook.com/*', '*://facebook.com/*'],
+};
+
 const PLATFORM_URLS = {
   X: 'https://x.com',
   LINKEDIN: 'https://www.linkedin.com',
@@ -345,36 +353,80 @@ const PLATFORM_URLS = {
 async function checkAllPlatformLogins() {
   const status = {};
   
-  for (const [platform, url] of Object.entries(PLATFORM_URLS)) {
+  for (const [platform, patterns] of Object.entries(PLATFORM_URL_PATTERNS)) {
     try {
-      const tabs = await chrome.tabs.query({ url: `${url}/*` });
+      // Try all URL patterns for this platform
+      let tabs = [];
+      for (const pattern of patterns) {
+        const found = await chrome.tabs.query({ url: pattern });
+        if (found.length > 0) {
+          tabs = found;
+          break;
+        }
+      }
+      
       if (tabs.length === 0) {
-        status[platform] = 'UNKNOWN';
+        status[platform] = 'NO_TAB';
+        console.log(`[Postzzz] No tab found for ${platform}`);
         continue;
       }
+      
+      console.log(`[Postzzz] Found tab for ${platform}:`, tabs[0].url);
       
       const results = await chrome.scripting.executeScript({
         target: { tabId: tabs[0].id },
         func: (p) => {
           const detectors = {
             X: () => {
-              if (document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]')) return 'LOGGED_IN';
-              if (document.querySelector('[data-testid="loginButton"]')) return 'NEEDS_LOGIN';
+              // Multiple selectors for X/Twitter login detection
+              const loggedInSelectors = [
+                '[data-testid="SideNav_AccountSwitcher_Button"]',
+                '[data-testid="AppTabBar_Profile_Link"]',
+                '[aria-label="Profile"]',
+                'a[href*="/compose/tweet"]',
+              ];
+              const loggedOutSelectors = [
+                '[data-testid="loginButton"]',
+                '[data-testid="signupButton"]',
+                'a[href="/login"]',
+              ];
+              
+              for (const sel of loggedInSelectors) {
+                if (document.querySelector(sel)) return 'LOGGED_IN';
+              }
+              for (const sel of loggedOutSelectors) {
+                if (document.querySelector(sel)) return 'NEEDS_LOGIN';
+              }
               return 'UNKNOWN';
             },
             LINKEDIN: () => {
-              if (document.querySelector('.global-nav__me-photo')) return 'LOGGED_IN';
-              if (document.querySelector('[data-tracking-control-name*="sign-in"]')) return 'NEEDS_LOGIN';
+              const loggedIn = document.querySelector('.global-nav__me-photo') ||
+                              document.querySelector('[data-control-name="nav.settings_view_profile"]') ||
+                              document.querySelector('.feed-identity-module');
+              const loggedOut = document.querySelector('[data-tracking-control-name*="sign-in"]') ||
+                               document.querySelector('.nav__button-secondary');
+              if (loggedIn) return 'LOGGED_IN';
+              if (loggedOut) return 'NEEDS_LOGIN';
               return 'UNKNOWN';
             },
             INSTAGRAM: () => {
-              if (document.querySelector('[data-testid="user-avatar"]')) return 'LOGGED_IN';
-              if (document.querySelector('input[name="username"]')) return 'NEEDS_LOGIN';
+              const loggedIn = document.querySelector('[data-testid="user-avatar"]') ||
+                              document.querySelector('svg[aria-label="New post"]') ||
+                              document.querySelector('a[href*="/direct/inbox"]');
+              const loggedOut = document.querySelector('input[name="username"]') ||
+                               document.querySelector('button[type="submit"]');
+              if (loggedIn) return 'LOGGED_IN';
+              if (loggedOut) return 'NEEDS_LOGIN';
               return 'UNKNOWN';
             },
             FACEBOOK: () => {
-              if (document.querySelector('[aria-label="Your profile"]')) return 'LOGGED_IN';
-              if (document.querySelector('#email')) return 'NEEDS_LOGIN';
+              const loggedIn = document.querySelector('[aria-label="Your profile"]') ||
+                              document.querySelector('[aria-label="Account"]') ||
+                              document.querySelector('[data-pagelet="ProfileTilesFeed"]');
+              const loggedOut = document.querySelector('#email') ||
+                               document.querySelector('input[name="email"]');
+              if (loggedIn) return 'LOGGED_IN';
+              if (loggedOut) return 'NEEDS_LOGIN';
               return 'UNKNOWN';
             },
           };
@@ -384,8 +436,10 @@ async function checkAllPlatformLogins() {
       });
       
       status[platform] = results[0]?.result || 'UNKNOWN';
+      console.log(`[Postzzz] ${platform} login status:`, status[platform]);
     } catch (error) {
-      status[platform] = 'UNKNOWN';
+      console.error(`[Postzzz] Error checking ${platform}:`, error);
+      status[platform] = 'ERROR';
     }
   }
   

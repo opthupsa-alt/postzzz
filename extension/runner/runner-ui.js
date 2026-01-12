@@ -235,6 +235,12 @@ function updatePlatformStatusUI() {
       } else if (status === 'NEEDS_LOGIN') {
         stateEl.classList.add('needs-login');
         stateEl.textContent = '✗ غير متصل';
+      } else if (status === 'NO_TAB') {
+        stateEl.classList.add('no-tab');
+        stateEl.textContent = '📂 افتح المنصة';
+      } else if (status === 'ERROR') {
+        stateEl.classList.add('error');
+        stateEl.textContent = '⚠️ خطأ';
       } else {
         stateEl.classList.add('unknown');
         stateEl.textContent = '? غير معروف';
