@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { TrendingUp, Zap, Calendar, Clock, Activity, Loader2, Send, Building2, Smartphone, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { TrendingUp, Zap, Calendar, Clock, Activity, Loader2, Send, Building2, Smartphone, CheckCircle, XCircle, AlertCircle, Trash2, Ban } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 import { getStoredUser } from '../lib/api';
-import { getPublishingStats, PublishingStats } from '../lib/publishing-api';
+import { getPublishingStats, PublishingStats, cancelJob, deleteJob } from '../lib/publishing-api';
+import { showToast } from '../components/NotificationToast';
 
 const StatCard = ({ title, value, icon: Icon, color, trend }: any) => (
   <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all group cursor-pointer relative overflow-hidden">
@@ -48,18 +49,19 @@ const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const user = getStoredUser();
 
+  const loadStats = async () => {
+    try {
+      const data = await getPublishingStats();
+      setStats(data);
+    } catch (err) {
+      console.error('Failed to fetch stats:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const data = await getPublishingStats();
-        setStats(data);
-      } catch (err) {
-        console.error('Failed to fetch stats:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchStats();
+    loadStats();
   }, []);
 
   return (
@@ -141,6 +143,44 @@ const DashboardPage: React.FC = () => {
                     <span className="text-[10px] text-gray-400">
                       {new Date(job.createdAt).toLocaleDateString('ar-SA')}
                     </span>
+                    {['QUEUED', 'CLAIMED'].includes(job.status) && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!confirm('هل أنت متأكد من إلغاء هذه المهمة؟')) return;
+                          try {
+                            await cancelJob(job.id);
+                            showToast('SUCCESS', 'تم الإلغاء', 'تم إلغاء المهمة بنجاح');
+                            loadStats();
+                          } catch (err: any) {
+                            showToast('ERROR', 'خطأ', err.message || 'حدث خطأ');
+                          }
+                        }}
+                        className="p-1.5 hover:bg-red-100 rounded-lg transition-colors text-gray-400 hover:text-red-500"
+                        title="إلغاء المهمة"
+                      >
+                        <Ban size={14} />
+                      </button>
+                    )}
+                    {['CANCELLED', 'FAILED'].includes(job.status) && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!confirm('هل أنت متأكد من حذف هذه المهمة؟')) return;
+                          try {
+                            await deleteJob(job.id);
+                            showToast('SUCCESS', 'تم الحذف', 'تم حذف المهمة بنجاح');
+                            loadStats();
+                          } catch (err: any) {
+                            showToast('ERROR', 'خطأ', err.message || 'حدث خطأ');
+                          }
+                        }}
+                        className="p-1.5 hover:bg-red-100 rounded-lg transition-colors text-gray-400 hover:text-red-500"
+                        title="حذف المهمة"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
