@@ -111,9 +111,31 @@ function setupRunnerEventListeners() {
   if (runnerElements.checkJobsBtn) {
     runnerElements.checkJobsBtn.addEventListener('click', async () => {
       addDebugLog('فحص المهام يدوياً...');
+      
+      // First check auth state
+      const authState = await sendRunnerMessage({ type: 'GET_AUTH_STATE' });
+      addDebugLog('Auth: ' + (authState?.isAuthenticated ? 'متصل' : 'غير متصل'));
+      
+      // Check device status
+      const deviceStatus = await sendRunnerMessage({ type: 'GET_DEVICE_STATUS' });
+      addDebugLog('Device ID: ' + (deviceStatus?.deviceId || 'لا يوجد'));
+      
+      // Get jobs directly
+      const jobsResponse = await sendRunnerMessage({ type: 'GET_CLAIMED_JOBS' });
+      addDebugLog('Jobs count: ' + (jobsResponse?.jobs?.length || 0));
+      if (jobsResponse?.jobs?.length > 0) {
+        jobsResponse.jobs.forEach((job, i) => {
+          addDebugLog(`Job ${i+1}: ${job.platform} - ${job.scheduledAt}`);
+        });
+      }
+      
+      // Trigger scheduler check
       const result = await sendRunnerMessage({ type: 'CHECK_SCHEDULED_JOBS' });
       addDebugLog('نتيجة الفحص: ' + JSON.stringify(result));
       await updateSchedulerStatus();
+      
+      // Reload jobs list
+      await loadClaimedJobs();
     });
   }
   
