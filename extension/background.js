@@ -103,10 +103,14 @@ async function login(email, password) {
     [STORAGE_KEYS.TENANT]: data.tenant || data.user?.defaultTenant,
   });
 
+  // Start scheduler after login
+  startScheduler();
+
   return data;
 }
 
 async function logout() {
+  stopScheduler();
   await clearStorageData();
 }
 
@@ -518,12 +522,12 @@ async function startPublishingJob(jobId) {
   }
 }
 
-async function fillPlatformContent(platform, content, tabId) {
+async function fillPlatformContent(platform, content, tabId, autoPost = true) {
   try {
     if (platform === 'X') {
       await chrome.scripting.executeScript({
         target: { tabId },
-        func: (text) => {
+        func: (text, shouldAutoPost) => {
           // Wait for composer to appear
           let attempts = 0;
           const maxAttempts = 20;
@@ -546,6 +550,23 @@ async function fillPlatformContent(platform, content, tabId) {
                 editor.dispatchEvent(new Event('input', { bubbles: true }));
               }
               console.log('[Postzzz] Content filled successfully');
+              
+              // Auto-click Post button if enabled
+              if (shouldAutoPost) {
+                setTimeout(() => {
+                  const postBtn = document.querySelector('[data-testid="tweetButton"]') ||
+                                 document.querySelector('[data-testid="tweetButtonInline"]') ||
+                                 document.querySelector('button[data-testid*="tweet"]') ||
+                                 document.querySelector('div[role="button"][data-testid*="tweet"]');
+                  
+                  if (postBtn && !postBtn.disabled) {
+                    console.log('[Postzzz] Clicking Post button...');
+                    postBtn.click();
+                  } else {
+                    console.log('[Postzzz] Post button not found or disabled');
+                  }
+                }, 1500);
+              }
               return true;
             }
             
@@ -559,13 +580,13 @@ async function fillPlatformContent(platform, content, tabId) {
           
           tryFill();
         },
-        args: [content],
+        args: [content, autoPost],
       });
       return { success: true };
     } else if (platform === 'LINKEDIN') {
       await chrome.scripting.executeScript({
         target: { tabId },
-        func: (text) => {
+        func: (text, shouldAutoPost) => {
           // Click "Start a post" button
           const startPostBtn = document.querySelector('.share-box-feed-entry__trigger') ||
                               document.querySelector('[data-control-name="share.post_entry_point"]') ||
@@ -586,10 +607,70 @@ async function fillPlatformContent(platform, content, tabId) {
               editor.innerHTML = `<p>${text}</p>`;
               editor.dispatchEvent(new Event('input', { bubbles: true }));
               console.log('[Postzzz] LinkedIn content filled');
+              
+              // Auto-click Post button if enabled
+              if (shouldAutoPost) {
+                setTimeout(() => {
+                  const postBtn = document.querySelector('.share-actions__primary-action') ||
+                                 document.querySelector('button.share-box-footer__primary-btn') ||
+                                 document.querySelector('button[aria-label*="Post"]') ||
+                                 document.querySelector('button.artdeco-button--primary');
+                  
+                  if (postBtn && !postBtn.disabled) {
+                    console.log('[Postzzz] Clicking Post button...');
+                    postBtn.click();
+                  } else {
+                    console.log('[Postzzz] Post button not found or disabled');
+                  }
+                }, 1500);
+              }
             }
           }, 1500);
         },
-        args: [content],
+        args: [content, autoPost],
+      });
+      return { success: true };
+    } else if (platform === 'INSTAGRAM') {
+      // Instagram requires different approach - just open the page
+      console.log('[Postzzz] Instagram auto-post not supported yet');
+      return { success: true, message: 'Instagram requires manual posting' };
+    } else if (platform === 'FACEBOOK') {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (text, shouldAutoPost) => {
+          // Click "What's on your mind" to open composer
+          const createPostBtn = document.querySelector('[aria-label*="Create a post"]') ||
+                               document.querySelector('[aria-label*="What\'s on your mind"]') ||
+                               document.querySelector('[role="button"][tabindex="0"]');
+          
+          if (createPostBtn) {
+            createPostBtn.click();
+          }
+          
+          setTimeout(() => {
+            const editor = document.querySelector('[contenteditable="true"][role="textbox"]') ||
+                          document.querySelector('[data-lexical-editor="true"]');
+            
+            if (editor) {
+              editor.focus();
+              document.execCommand('insertText', false, text);
+              console.log('[Postzzz] Facebook content filled');
+              
+              if (shouldAutoPost) {
+                setTimeout(() => {
+                  const postBtn = document.querySelector('[aria-label="Post"]') ||
+                                 document.querySelector('div[aria-label="Post"][role="button"]');
+                  
+                  if (postBtn && !postBtn.disabled) {
+                    console.log('[Postzzz] Clicking Post button...');
+                    postBtn.click();
+                  }
+                }, 1500);
+              }
+            }
+          }, 2000);
+        },
+        args: [content, autoPost],
       });
       return { success: true };
     }
@@ -679,8 +760,100 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
 // ==================== Setup ====================
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
-chrome.runtime.onInstalled.addListener(() => {
+// ==================== Job Scheduler ====================
+let schedulerInterval = null;
+const SCHEDULER_CHECK_INTERVAL = 30000; // Check every 30 seconds
+
+async function startScheduler() {
+  if (schedulerInterval) return;
+  
+  console.log('[Postzzz] Starting job scheduler');
+  schedulerInterval = setInterval(checkScheduledJobs, SCHEDULER_CHECK_INTERVAL);
+  // Run immediately
+  checkScheduledJobs();
+}
+
+function stopScheduler() {
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+    schedulerInterval = null;
+    console.log('[Postzzz] Scheduler stopped');
+  }
+}
+
+async function checkScheduledJobs() {
+  try {
+    const authState = await getAuthState();
+    if (!authState.isAuthenticated) return;
+    
+    // Get jobs that are due now
+    const now = new Date().toISOString();
+    const response = await apiRequest(`/publishing/jobs?status=QUEUED&scheduledBefore=${now}&limit=5`);
+    const jobs = response?.data || response || [];
+    
+    if (!Array.isArray(jobs) || jobs.length === 0) return;
+    
+    console.log(`[Postzzz] Found ${jobs.length} scheduled jobs ready to publish`);
+    
+    // Process jobs one by one
+    for (const job of jobs) {
+      // Check if job is due
+      const scheduledAt = new Date(job.scheduledAt);
+      const nowDate = new Date();
+      
+      if (scheduledAt <= nowDate) {
+        console.log(`[Postzzz] Auto-publishing job ${job.id} for platform ${job.platform}`);
+        
+        // Check if platform is logged in
+        const platformConfig = PLATFORMS[job.platform];
+        if (platformConfig) {
+          const cookie = await chrome.cookies.get({
+            url: platformConfig.urls[0],
+            name: platformConfig.authCookie,
+          });
+          
+          if (!cookie || !cookie.value) {
+            console.log(`[Postzzz] Not logged in to ${job.platform}, skipping job`);
+            continue;
+          }
+        }
+        
+        // Start the job
+        await startPublishingJob(job.id);
+        
+        // Wait before processing next job
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
+  } catch (error) {
+    console.error('[Postzzz] Scheduler error:', error);
+  }
+}
+
+// ==================== Startup ====================
+chrome.runtime.onInstalled.addListener(async () => {
   console.log('[Postzzz] Extension installed/updated');
+  await loadConfig();
 });
+
+chrome.runtime.onStartup.addListener(async () => {
+  console.log('[Postzzz] Extension started');
+  await loadConfig();
+  
+  // Start scheduler if authenticated
+  const authState = await getAuthState();
+  if (authState.isAuthenticated) {
+    startScheduler();
+  }
+});
+
+// Start scheduler on load if authenticated
+(async () => {
+  await loadConfig();
+  const authState = await getAuthState();
+  if (authState.isAuthenticated) {
+    startScheduler();
+  }
+})();
 
 console.log('[Postzzz] Background service worker loaded');
