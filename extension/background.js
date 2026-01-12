@@ -1147,23 +1147,30 @@ async function checkScheduledJobs() {
     
     // Process jobs one by one
     for (const job of jobs) {
+      console.log(`[Postzzz] Processing job:`, job.id, job.platform, job.scheduledAt);
+      
       // Check if job is due
       const scheduledAt = new Date(job.scheduledAt);
       const nowDate = new Date();
       
+      console.log(`[Postzzz] Job scheduled at: ${scheduledAt.toISOString()}, now: ${nowDate.toISOString()}`);
+      
       if (scheduledAt <= nowDate) {
-        console.log(`[Postzzz] Auto-publishing job ${job.id} for platform ${job.platform}`);
+        console.log(`[Postzzz] ✅ Job ${job.id} is due! Starting auto-publish for ${job.platform}`);
         
         // Check if platform is logged in
         const platformConfig = PLATFORMS[job.platform];
         if (platformConfig) {
+          console.log(`[Postzzz] Checking login for ${job.platform} at ${platformConfig.urls[0]}`);
           const cookie = await chrome.cookies.get({
             url: platformConfig.urls[0],
             name: platformConfig.authCookie,
           });
           
+          console.log(`[Postzzz] Cookie check result:`, cookie ? 'Found' : 'Not found');
+          
           if (!cookie || !cookie.value) {
-            console.log(`[Postzzz] Not logged in to ${job.platform}, skipping job`);
+            console.log(`[Postzzz] ❌ Not logged in to ${job.platform}, reporting NEEDS_LOGIN`);
             // Claim, start, then report NEEDS_LOGIN status
             try {
               // Claim the job
@@ -1193,8 +1200,12 @@ async function checkScheduledJobs() {
           }
         }
         
+        // User is logged in, proceed with publishing
+        console.log(`[Postzzz] ✅ User is logged in to ${job.platform}, proceeding with publish`);
+        
         // Claim the job first
         try {
+          console.log('[Postzzz] Claiming job...');
           await apiRequest('/publishing/jobs/claim', {
             method: 'POST',
             body: JSON.stringify({
@@ -1202,12 +1213,15 @@ async function checkScheduledJobs() {
               limit: 1,
             }),
           });
+          console.log('[Postzzz] Job claimed successfully');
         } catch (e) {
-          console.log('[Postzzz] Could not claim job, may already be claimed');
+          console.log('[Postzzz] Could not claim job, may already be claimed:', e.message);
         }
         
         // Start the job
-        await startPublishingJob(job.id);
+        console.log('[Postzzz] Starting publishing job...');
+        const result = await startPublishingJob(job.id);
+        console.log('[Postzzz] startPublishingJob result:', result);
         
         // Wait before processing next job
         await new Promise(resolve => setTimeout(resolve, 5000));
