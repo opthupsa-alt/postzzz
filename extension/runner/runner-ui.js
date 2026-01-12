@@ -8,6 +8,16 @@ let runnerElements = null;
 
 function initRunnerElements() {
   runnerElements = {
+    // Debug section
+    debugSection: document.getElementById('debugSection'),
+    toggleDebugBtn: document.getElementById('toggleDebugBtn'),
+    debugContent: document.getElementById('debugContent'),
+    schedulerStatus: document.getElementById('schedulerStatus'),
+    checkJobsBtn: document.getElementById('checkJobsBtn'),
+    startSchedulerBtn: document.getElementById('startSchedulerBtn'),
+    stopSchedulerBtn: document.getElementById('stopSchedulerBtn'),
+    debugLog: document.getElementById('debugLog'),
+    
     // Mode section
     modeSection: document.getElementById('runnerModeSection'),
     modeAssistBtn: document.getElementById('modeAssistBtn'),
@@ -83,6 +93,50 @@ async function initRunnerUI() {
 // ==================== Event Listeners ====================
 
 function setupRunnerEventListeners() {
+  // Debug section toggle
+  if (runnerElements.toggleDebugBtn) {
+    runnerElements.toggleDebugBtn.addEventListener('click', () => {
+      const content = runnerElements.debugContent;
+      if (content.style.display === 'none') {
+        content.style.display = 'block';
+        runnerElements.toggleDebugBtn.textContent = 'إخفاء';
+      } else {
+        content.style.display = 'none';
+        runnerElements.toggleDebugBtn.textContent = 'إظهار';
+      }
+    });
+  }
+  
+  // Check jobs button
+  if (runnerElements.checkJobsBtn) {
+    runnerElements.checkJobsBtn.addEventListener('click', async () => {
+      addDebugLog('فحص المهام يدوياً...');
+      const result = await sendRunnerMessage({ type: 'CHECK_SCHEDULED_JOBS' });
+      addDebugLog('نتيجة الفحص: ' + JSON.stringify(result));
+      await updateSchedulerStatus();
+    });
+  }
+  
+  // Start scheduler button
+  if (runnerElements.startSchedulerBtn) {
+    runnerElements.startSchedulerBtn.addEventListener('click', async () => {
+      addDebugLog('تشغيل المجدول...');
+      const result = await sendRunnerMessage({ type: 'START_SCHEDULER' });
+      addDebugLog('نتيجة التشغيل: ' + JSON.stringify(result));
+      await updateSchedulerStatus();
+    });
+  }
+  
+  // Stop scheduler button
+  if (runnerElements.stopSchedulerBtn) {
+    runnerElements.stopSchedulerBtn.addEventListener('click', async () => {
+      addDebugLog('إيقاف المجدول...');
+      const result = await sendRunnerMessage({ type: 'STOP_SCHEDULER' });
+      addDebugLog('نتيجة الإيقاف: ' + JSON.stringify(result));
+      await updateSchedulerStatus();
+    });
+  }
+  
   // Client selection
   if (runnerElements.clientSelect) {
     runnerElements.clientSelect.addEventListener('change', async (e) => {
@@ -111,6 +165,39 @@ function setupRunnerEventListeners() {
     runnerElements.cancelJobBtn.addEventListener('click', async () => {
       await cancelActiveJob();
     });
+  }
+  
+  // Update scheduler status periodically
+  updateSchedulerStatus();
+  setInterval(updateSchedulerStatus, 5000);
+}
+
+// ==================== Debug Functions ====================
+
+async function updateSchedulerStatus() {
+  try {
+    const status = await sendRunnerMessage({ type: 'GET_SCHEDULER_STATUS' });
+    if (runnerElements.schedulerStatus) {
+      const running = status?.running ? '✅ يعمل' : '❌ متوقف';
+      const heartbeat = status?.heartbeatRunning ? '✅' : '❌';
+      runnerElements.schedulerStatus.innerHTML = `المجدول: ${running} | Heartbeat: ${heartbeat}`;
+    }
+  } catch (e) {
+    if (runnerElements.schedulerStatus) {
+      runnerElements.schedulerStatus.textContent = 'خطأ في جلب الحالة';
+    }
+  }
+}
+
+function addDebugLog(message) {
+  if (runnerElements.debugLog) {
+    const time = new Date().toLocaleTimeString('ar-SA');
+    runnerElements.debugLog.textContent = `[${time}] ${message}\n` + runnerElements.debugLog.textContent;
+    // Keep only last 50 lines
+    const lines = runnerElements.debugLog.textContent.split('\n');
+    if (lines.length > 50) {
+      runnerElements.debugLog.textContent = lines.slice(0, 50).join('\n');
+    }
   }
 }
 
