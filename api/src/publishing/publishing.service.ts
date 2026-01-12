@@ -116,15 +116,36 @@ export class PublishingService {
   // ==================== CLAIM PROTOCOL ====================
 
   async claimJobs(tenantId: string, dto: ClaimJobsDto) {
-    const limit = dto.limit || 5;
+    // Rate limiting: max 5 jobs per claim
+    const MAX_CLAIM_LIMIT = 5;
+    const limit = Math.min(dto.limit || 3, MAX_CLAIM_LIMIT);
 
-    // Verify device belongs to tenant
+    // Security: Verify device belongs to tenant
     const device = await this.prisma.deviceAgent.findFirst({
       where: { id: dto.deviceId, tenantId },
     });
 
     if (!device) {
-      throw new NotFoundException('Device not found');
+      throw new NotFoundException('Device not found or does not belong to tenant');
+    }
+
+    // Check if device already has too many active jobs
+    const activeJobsCount = await this.prisma.publishingJob.count({
+      where: {
+        lockedByDeviceId: dto.deviceId,
+        status: { in: ['CLAIMED', 'RUNNING'] },
+      },
+    });
+
+    if (activeJobsCount >= MAX_CLAIM_LIMIT) {
+      return []; // Don't claim more if device already has max active jobs
+    }
+
+    const remainingSlots = MAX_CLAIM_LIMIT - activeJobsCount;
+    const effectiveLimit = Math.min(limit, remainingSlots);
+
+    if (effectiveLimit <= 0) {
+      return [];
     }
 
     // Find QUEUED jobs that are ready to run (scheduledAt <= now)
@@ -142,7 +163,7 @@ export class PublishingService {
           ...(device.clientId ? { clientId: device.clientId } : {}),
         },
         orderBy: [{ priority: 'asc' }, { scheduledAt: 'asc' }],
-        take: limit,
+        take: effectiveLimit,
       });
 
       if (eligibleJobs.length === 0) {
@@ -241,6 +262,11 @@ export class PublishingService {
 
     if (!job) {
       throw new NotFoundException('Job not found');
+    }
+
+    // Idempotency: if job already completed, return success silently
+    if (['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(job.status)) {
+      return { success: true, message: 'Job already completed', idempotent: true };
     }
 
     if (job.status !== 'RUNNING') {

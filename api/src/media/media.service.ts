@@ -25,6 +25,18 @@ export class MediaService {
       throw new BadRequestException('No file provided');
     }
 
+    // Security: Validate file size (max 5MB for screenshots)
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    if (file.size > MAX_SIZE) {
+      throw new BadRequestException('File too large (max 5MB)');
+    }
+
+    // Security: Validate mime type
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!allowedTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Invalid file type (only PNG, JPEG, WebP allowed)');
+    }
+
     // For now, store as base64 in database (simple approach)
     // In production, use cloud storage (S3, GCS, etc.)
     const base64Data = file.buffer.toString('base64');
