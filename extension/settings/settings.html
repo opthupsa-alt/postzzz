@@ -1,152 +1,0 @@
-<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>إعدادات Leedz</title>
-  <link rel="stylesheet" href="settings.css">
-</head>
-<body>
-  <div class="container">
-    <!-- Header -->
-    <header class="header">
-      <div class="header-content">
-        <div class="logo">
-          <span class="logo-icon">🎯</span>
-          <span class="logo-text">Leedz</span>
-        </div>
-        <h1>إعدادات الإضافة</h1>
-      </div>
-    </header>
-
-    <!-- Main Content -->
-    <main class="main-content">
-      <!-- Social Media Section -->
-      <section class="section social-section">
-        <div class="section-header">
-          <h2>📱 حسابات التواصل الاجتماعي</h2>
-          <p class="section-description">قم بتسجيل الدخول للمنصات لتمكين البحث فيها واستخراج معلومات إضافية</p>
-        </div>
-        
-        <div id="platformsList" class="platforms-list">
-          <!-- سيتم ملؤها بواسطة JavaScript -->
-          <div class="loading">جاري التحميل...</div>
-        </div>
-        
-        <div class="section-footer">
-          <button id="checkAllBtn" class="btn btn-secondary">
-            🔄 التحقق من جميع الحسابات
-          </button>
-        </div>
-      </section>
-
-      <!-- Search Settings Section -->
-      <section class="section search-section">
-        <div class="section-header">
-          <h2>⚡ إعدادات البحث</h2>
-          <p class="section-description">تحكم في مصادر البحث المستخدمة</p>
-        </div>
-        
-        <div class="settings-list">
-          <label class="checkbox-item">
-            <input type="checkbox" id="enableGoogleMaps" checked>
-            <span class="checkbox-custom"></span>
-            <div class="checkbox-content">
-              <span class="checkbox-label">🗺️ Google Maps</span>
-              <span class="checkbox-description">البحث في خرائط جوجل (الأساسي)</span>
-            </div>
-          </label>
-          
-          <label class="checkbox-item">
-            <input type="checkbox" id="enableGoogleSearch" checked>
-            <span class="checkbox-custom"></span>
-            <div class="checkbox-content">
-              <span class="checkbox-label">🔍 Google Search</span>
-              <span class="checkbox-description">البحث في محرك جوجل للمواقع وروابط التواصل</span>
-            </div>
-          </label>
-          
-          <label class="checkbox-item">
-            <input type="checkbox" id="enableSocialMedia">
-            <span class="checkbox-custom"></span>
-            <div class="checkbox-content">
-              <span class="checkbox-label">📱 Social Media</span>
-              <span class="checkbox-description">البحث في منصات التواصل المتصلة</span>
-            </div>
-          </label>
-        </div>
-      </section>
-
-      <!-- Advanced Settings Section -->
-      <section class="section advanced-section">
-        <div class="section-header">
-          <h2>🔧 إعدادات متقدمة</h2>
-        </div>
-        
-        <div class="settings-list">
-          <div class="setting-item">
-            <label for="matchThreshold">حد التطابق الأدنى: <span id="matchThresholdValue">90%</span></label>
-            <input type="range" id="matchThreshold" min="50" max="100" value="90" style="width: 100%;">
-            <small style="color: #9ca3af; font-size: 11px;">النتائج أقل من هذه النسبة سيتم تجاهلها</small>
-          </div>
-          
-          <div class="setting-item">
-            <label for="maxResults">الحد الأقصى للنتائج:</label>
-            <select id="maxResults">
-              <option value="10">10 نتائج</option>
-              <option value="20">20 نتيجة</option>
-              <option value="30" selected>30 نتيجة</option>
-              <option value="50">50 نتيجة</option>
-            </select>
-          </div>
-          
-          <div class="setting-item">
-            <label for="searchDelay">تأخير البحث (ثواني):</label>
-            <select id="searchDelay">
-              <option value="2">2 ثواني</option>
-              <option value="3" selected>3 ثواني</option>
-              <option value="5">5 ثواني</option>
-            </select>
-          </div>
-          
-          <label class="checkbox-item">
-            <input type="checkbox" id="showSearchWindow">
-            <span class="checkbox-custom"></span>
-            <div class="checkbox-content">
-              <span class="checkbox-label">👁️ إظهار نافذة البحث</span>
-              <span class="checkbox-description">عرض نافذة المتصفح أثناء البحث</span>
-            </div>
-          </label>
-          
-          <label class="checkbox-item">
-            <input type="checkbox" id="debugMode">
-            <span class="checkbox-custom"></span>
-            <div class="checkbox-content">
-              <span class="checkbox-label">🐛 وضع التصحيح</span>
-              <span class="checkbox-description">عرض معلومات تفصيلية في Console</span>
-            </div>
-          </label>
-        </div>
-      </section>
-    </main>
-
-    <!-- Footer -->
-    <footer class="footer">
-      <div class="footer-content">
-        <button id="saveBtn" class="btn btn-primary">💾 حفظ الإعدادات</button>
-        <button id="resetBtn" class="btn btn-secondary">🔄 إعادة تعيين</button>
-      </div>
-      <p class="version">Leedz Extension v1.0.0</p>
-    </footer>
-  </div>
-
-  <!-- Toast Notification -->
-  <div id="toast" class="toast hidden">
-    <span id="toastMessage"></span>
-  </div>
-
-  <script src="../config.production.js"></script>
-  <script src="../config.js" onerror=""></script>
-  <script src="settings.js"></script>
-</body>
-</html>

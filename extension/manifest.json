@@ -52,8 +52,6 @@
     "default_path": "sidepanel.html"
   },
   
-  "options_page": "settings/settings.html",
-  
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -62,7 +60,7 @@
   },
   
   "action": {
-    "default_title": "Leedz",
+    "default_title": "Postzzz",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

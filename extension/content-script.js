@@ -1,5 +1,5 @@
 /**
- * Leedz Extension - Content Script
+ * Postzzz Extension - Content Script
  * يعمل على صفحات المنصة للتواصل معها
  */
 
