@@ -255,11 +255,47 @@ const SettingsPage: React.FC = () => {
                    </div>
                    <Bell size={64} className="text-blue-200 opacity-50 -mr-4" />
                 </div>
+
+                {/* WhatsApp Notification Settings */}
+                <div className="p-8 bg-green-50/50 border border-green-100 rounded-[2rem] space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className="p-4 bg-green-500 text-white rounded-2xl">
+                      <Smartphone size={24} />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-gray-900 text-xl">إشعارات الواتساب</h4>
+                      <p className="text-sm text-gray-500 font-bold">استلم إشعارات نجاح أو فشل النشر على الواتساب</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">رقم الواتساب</label>
+                      <input 
+                        type="tel" 
+                        placeholder="05xxxxxxxx" 
+                        className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-green-500/10 focus:border-green-500 outline-none transition-all" 
+                        dir="ltr"
+                      />
+                      <p className="text-xs text-gray-400 px-2">سيتم إرسال إشعارات النشر لهذا الرقم</p>
+                    </div>
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">تفعيل الإشعارات</label>
+                      <div className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-2xl">
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input type="checkbox" className="sr-only peer" defaultChecked />
+                          <div className="w-14 h-8 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:right-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-500 shadow-inner"></div>
+                        </label>
+                        <span className="text-sm font-bold text-gray-700">إرسال إشعارات عند النشر</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {[
-                  { id: 'searchCompletions', title: 'اكتمال عمليات البحث', desc: 'تلقي إشعار فور انتهاء الروبوت من استخراج العملاء الجدد' },
-                  { id: 'salesReports', title: 'صدور تقارير ذكية', desc: 'تنبيه عند جاهزية تقرير مبيعات لعميل مستهدف' },
-                  { id: 'whatsappStatus', title: 'حالة إرسال واتساب', desc: 'تنبيه في حال فشل إرسال رسالة مجدولة' },
-                  { id: 'teamActivity', title: 'نشاط الفريق', desc: 'إشعارات عند قيام زملائك بإجراءات مهمة على العملاء' },
+                  { id: 'publishSuccess', title: 'نجاح النشر', desc: 'تلقي إشعار عند نشر منشور بنجاح على أي منصة' },
+                  { id: 'publishFailure', title: 'فشل النشر', desc: 'تلقي إشعار عند فشل نشر منشور مع سبب الفشل' },
+                  { id: 'teamActivity', title: 'نشاط الفريق', desc: 'إشعارات عند قيام زملائك بإجراءات مهمة' },
                 ].map((item) => (
                   <div key={item.id} className="flex items-center justify-between p-8 border border-gray-50 rounded-[2rem] hover:bg-gray-50 transition-all group">
                     <div className="flex-1 ml-4">
@@ -270,8 +306,7 @@ const SettingsPage: React.FC = () => {
                       <input 
                         type="checkbox" 
                         className="sr-only peer" 
-                        checked={notificationPreferences[item.id as keyof NotificationPreferences]} 
-                        onChange={() => toggleNotificationPreference(item.id as any)}
+                        defaultChecked
                       />
                       <div className="w-16 h-9 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:right-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-7 after:w-7 after:transition-all peer-checked:bg-blue-600 shadow-inner"></div>
                     </label>

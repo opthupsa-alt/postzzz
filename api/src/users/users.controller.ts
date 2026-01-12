@@ -66,4 +66,21 @@ export class UsersController {
       user.userId,
     );
   }
+
+  @Get('me')
+  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiResponse({ status: 200, description: 'Current user profile' })
+  async getProfile(@CurrentUser() user: CurrentUserPayload) {
+    return this.usersService.getProfile(user.userId);
+  }
+
+  @Patch('me')
+  @ApiOperation({ summary: 'Update current user profile' })
+  @ApiResponse({ status: 200, description: 'Profile updated' })
+  async updateProfile(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() data: { name?: string; whatsappPhone?: string; notifyOnPublish?: boolean },
+  ) {
+    return this.usersService.updateProfile(user.userId, data);
+  }
 }

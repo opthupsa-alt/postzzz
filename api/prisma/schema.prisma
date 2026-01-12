@@ -55,6 +55,8 @@ model User {
   passwordHash    String
   name            String
   avatarUrl       String?
+  whatsappPhone   String?
+  notifyOnPublish Boolean      @default(true)
   isSuperAdmin    Boolean      @default(false)
   isActive        Boolean      @default(true)
   createdAt       DateTime     @default(now())

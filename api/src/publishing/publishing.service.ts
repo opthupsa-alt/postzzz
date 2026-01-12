@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { PublishNotificationService } from './publish-notification.service';
 import { ClaimJobsDto, StartJobDto, CompleteJobDto } from './dto';
 
 @Injectable()
@@ -13,6 +14,7 @@ export class PublishingService {
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
+    private notificationService: PublishNotificationService,
   ) {}
 
   // ==================== JOBS LISTING ====================
@@ -307,6 +309,13 @@ export class PublishingService {
         },
       });
 
+      // Send WhatsApp notification for success
+      this.notificationService.notifyPostPublishResult(
+        job.postId,
+        job.platform,
+        'SUCCESS',
+      ).catch(err => console.error('Notification error:', err));
+
       // Check if all jobs for this post are succeeded
       await this.updatePostStatusFromJobs(job.postId);
     } else if (dto.status === 'NEEDS_LOGIN') {
@@ -346,6 +355,14 @@ export class PublishingService {
             lastErrorMessage: dto.errorMessage,
           },
         });
+
+        // Send WhatsApp notification for failure
+        this.notificationService.notifyPostPublishResult(
+          job.postId,
+          job.platform,
+          'FAILED',
+          dto.errorMessage,
+        ).catch(err => console.error('Notification error:', err));
 
         // Update post status
         await this.updatePostStatusFromJobs(job.postId);

@@ -123,4 +123,49 @@ export class UsersService {
 
     return { success: true };
   }
+
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        avatarUrl: true,
+        whatsappPhone: true,
+        notifyOnPublish: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return { data: user };
+  }
+
+  async updateProfile(
+    userId: string,
+    data: { name?: string; whatsappPhone?: string; notifyOnPublish?: boolean },
+  ) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(data.name && { name: data.name }),
+        ...(data.whatsappPhone !== undefined && { whatsappPhone: data.whatsappPhone }),
+        ...(data.notifyOnPublish !== undefined && { notifyOnPublish: data.notifyOnPublish }),
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        avatarUrl: true,
+        whatsappPhone: true,
+        notifyOnPublish: true,
+      },
+    });
+
+    return { data: user };
+  }
 }
